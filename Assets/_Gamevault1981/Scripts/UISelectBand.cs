@@ -1,50 +1,111 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using TMPro;
 using System;
 using System.IO;
 
-public class UISelectBand : MonoBehaviour
+public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPointerClickHandler, ISubmitHandler
 {
-    [Header("Card visuals")]
-    public RawImage cartridgeImage;
-    public TMP_Text titleText;
-    public TMP_Text numberText;
+    [Header("Band root (focus/click target)")]
+    public Button bandButton;             // <- add a Button on the band root; assign here
+    public Image  bandHighlightFrame;     // <- optional outline/underlay image to tint on focus
+
+    [Header("Cartridge visuals")]
+    public RawImage cartridgeImage;       // label goes here
+    public TMP_Text cartTitleText;        // overlay title on the cartridge (optional)
+    public TMP_Text numberText;           // "#<n>" badge (optional)
+
+    [Header("Right-side texts")]
+    public TMP_Text titleText;            // large title on the band (optional if you rely on cartridge only)
     public TMP_Text descText;
     public TMP_Text modesText;
     public TMP_Text statsText;
 
-    [Header("Cartridge Labels")]
-    [SerializeField] string labelsFolder = "labels";          // StreamingAssets/<labelsFolder>/<id>.(png|jpg|jpeg)
-    [SerializeField] Vector2 defaultFocus = new Vector2(0.5f, 0.5f); // 0..1 center by default
+    [Header("Actions (optional)")]
+    public Button btnPlay;                // you can keep a separate PLAY button if you like
+
+    [Header("Label loading (StreamingAssets)")]
+    [SerializeField] string labelsFolder = "labels";                 // StreamingAssets/labels/<id or title>.(png|jpg|jpeg)
+    [SerializeField] Vector2 defaultFocus = new Vector2(0.5f, 0.5f); // crop focus 0..1 (x,y)
     [Serializable] public struct LabelCropOverride { public string id; public Vector2 focus; }
     [SerializeField] LabelCropOverride[] cropOverrides;
 
-    [Header("Actions")]
-    public Button btnPlay;
+    [Header("Highlight color")]
+    [Tooltip("Leave alpha=0 to auto-generate from game number.")]
+    public Color highlightOverride = new Color(0,0,0,0);
 
     GameDef _def;
     MetaGameManager _meta;
+    Color _highlight;
+    Color _dim;
 
     // ---------- Public API ----------
     public void Bind(GameDef def, MetaGameManager meta)
     {
-        _def  = def;
+        _def = def;
         _meta = meta;
 
-        SetText(titleText,  def.title);
-        SetText(numberText, $"#{def.number}");
-        SetText(descText,   def.desc);
-        SetText(modesText,  Modes(def.flags));
-        SetText(statsText,  "1P best: –   2P best: –");
+        // Choose highlight color
+        _highlight = (highlightOverride.a > 0.01f) ? highlightOverride : AutoColor(def);
+        _dim       = new Color(_highlight.r, _highlight.g, _highlight.b, 0.18f);
 
+        // Texts
+        SafeSet(titleText,  def.title);
+        SafeSet(descText,   def.desc);
+        SafeSet(modesText,  Modes(def.flags));
+        SafeSet(statsText,  "1P best: –   2P best: –");
+        SafeSet(numberText, $"#{def.number}");
+        SafeSet(cartTitleText, def.title);
+
+        // Label art
         LoadAndCropLabel();
+
+        // Button wiring
+        if (bandButton)
+        {
+            bandButton.onClick.RemoveAllListeners();
+            bandButton.onClick.AddListener(() => _meta.StartGame(_def));
+            ApplyColorBlock(bandButton, _highlight);
+            SetHighlight(false);
+        }
 
         if (btnPlay)
         {
             btnPlay.onClick.RemoveAllListeners();
             btnPlay.onClick.AddListener(() => _meta.StartGame(_def));
+
+            // Make navigation sane: from PLAY -> band, from band -> PLAY (left/right)
+            var nPlay = btnPlay.navigation;
+            nPlay.mode = Navigation.Mode.Explicit;
+            nPlay.selectOnLeft = bandButton ? bandButton : null;
+            nPlay.selectOnRight = bandButton ? bandButton : null;
+            btnPlay.navigation = nPlay;
         }
+        
+        if (bandButton && !bandButton.targetGraphic)
+{
+    // Prefer a designated frame; else use the band’s background image; else use the cartridge
+    bandButton.targetGraphic = (bandHighlightFrame ? (Graphic)bandHighlightFrame
+                                 : (Graphic)bandButton.GetComponent<Image>())
+                                 ?? (Graphic)cartridgeImage;
+}
+    }
+
+    // ---------- EventSystem hooks (controller/keyboard navigation) ----------
+    public void OnSelect(BaseEventData e)   => SetHighlight(true);
+    public void OnDeselect(BaseEventData e) => SetHighlight(false);
+    public void OnPointerClick(PointerEventData e) { if (bandButton && bandButton.interactable) _meta.StartGame(_def); }
+    public void OnSubmit(BaseEventData e)   { if (bandButton && bandButton.interactable) _meta.StartGame(_def); }
+
+    void SetHighlight(bool on)
+    {
+        if (bandHighlightFrame)
+            bandHighlightFrame.color = on ? _highlight : _dim;
+
+        // If you want the cartridge title to glow a bit on focus:
+        if (cartTitleText)
+            cartTitleText.color = on ? Color.Lerp(_highlight, Color.white, 0.35f) : new Color(1,1,1,0.85f);
     }
 
     // ---------- Label loading & cropping ----------
@@ -53,21 +114,16 @@ public class UISelectBand : MonoBehaviour
         if (!cartridgeImage || _def == null) return;
 
         Texture2D tex = TryLoadLabelTexture();
-        if (tex == null)
-        {
-            // no label found; clear but keep full UV
-            cartridgeImage.texture = null;
-            cartridgeImage.uvRect  = new Rect(0, 0, 1, 1);
-            return;
-        }
+        cartridgeImage.texture = tex;
+        cartridgeImage.uvRect  = new Rect(0,0,1,1);
+
+        if (tex == null) return;
 
         tex.filterMode = FilterMode.Point;
         tex.wrapMode   = TextureWrapMode.Clamp;
 
-        // Compute current window aspect from the RawImage’s rect
         var rt = cartridgeImage.rectTransform.rect;
         float targetAspect = (rt.height <= 0f) ? 1.0f : (rt.width / rt.height);
-
         ApplyCoverCrop(cartridgeImage, tex, targetAspect, FindFocus(_def.id));
     }
 
@@ -75,43 +131,28 @@ public class UISelectBand : MonoBehaviour
     {
         string sa = Application.streamingAssetsPath;
 
-        // Helper to attempt a file
-        Texture2D Try(string absPath)
+        Texture2D Try(string p)
         {
-            if (!File.Exists(absPath)) return null;
-            var bytes = File.ReadAllBytes(absPath);
+            if (!File.Exists(p)) return null;
+            var bytes = File.ReadAllBytes(p);
             var t = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             t.LoadImage(bytes, false);
-            t.name = Path.GetFileNameWithoutExtension(absPath);
+            t.name = Path.GetFileNameWithoutExtension(p);
             return t;
         }
 
-        // We try in order:
-        // 1) StreamingAssets/labels/<id>.(png|jpg|jpeg)
-        // 2) StreamingAssets/labels/<title>.(png|jpg|jpeg)   (legacy assets with spaces)
-        // 3) StreamingAssets/covers/<id>.(png|jpg|jpeg)      (fallback)
-        // 4) StreamingAssets/covers/<title>.(png|jpg|jpeg)
-        string[] names = {
-            _def.id,
-            _def.title
-        };
-        string[] exts = { ".png", ".jpg", ".jpeg" };
-        string[] folders = {
-            Path.Combine(sa, labelsFolder),
-            Path.Combine(sa, "covers")
-        };
+        string[] names = { _def.id, _def.title };  // support IDs or legacy Title filenames
+        string[] exts  = { ".png", ".jpg", ".jpeg" };
+        string[] folders = { Path.Combine(sa, labelsFolder), Path.Combine(sa, "covers") };
 
         foreach (var folder in folders)
+        foreach (var n in names)
         {
-            foreach (var n in names)
+            if (string.IsNullOrEmpty(n)) continue;
+            foreach (var e in exts)
             {
-                if (string.IsNullOrEmpty(n)) continue;
-                foreach (var e in exts)
-                {
-                    var p = Path.Combine(folder, n + e);
-                    var tex = Try(p);
-                    if (tex != null) return tex;
-                }
+                var tex = Try(Path.Combine(folder, n + e));
+                if (tex != null) return tex;
             }
         }
         return null;
@@ -134,15 +175,9 @@ public class UISelectBand : MonoBehaviour
         return new Vector2(Mathf.Clamp01(defaultFocus.x), Mathf.Clamp01(defaultFocus.y));
     }
 
-    // Cover-style crop in UV space (no re-sampling). Matches the RawImage window aspect.
     void ApplyCoverCrop(RawImage img, Texture2D tex, float targetAspect, Vector2 focus01)
     {
-        img.texture = tex;
-        if (tex == null)
-        {
-            img.uvRect = new Rect(0, 0, 1, 1);
-            return;
-        }
+        if (tex == null) { img.uvRect = new Rect(0,0,1,1); return; }
 
         float srcAspect = (float)tex.width / Mathf.Max(1, tex.height);
         focus01 = new Vector2(Mathf.Clamp01(focus01.x), Mathf.Clamp01(focus01.y));
@@ -150,24 +185,21 @@ public class UISelectBand : MonoBehaviour
         if (srcAspect > targetAspect)
         {
             // Source wider → crop horizontally
-            float uvW = targetAspect / srcAspect;        // fraction of width we show
+            float uvW = targetAspect / srcAspect;
             float u   = Mathf.Clamp(focus01.x - uvW * 0.5f, 0f, 1f - uvW);
             img.uvRect = new Rect(u, 0f, uvW, 1f);
         }
         else
         {
             // Source taller → crop vertically
-            float uvH = srcAspect / targetAspect;        // fraction of height we show
+            float uvH = srcAspect / targetAspect;
             float v   = Mathf.Clamp(focus01.y - uvH * 0.5f, 0f, 1f - uvH);
             img.uvRect = new Rect(0f, v, 1f, uvH);
         }
     }
 
-    // ---------- Misc ----------
-    void SetText(TMP_Text t, string s)
-    {
-        if (t) t.text = s ?? "";
-    }
+    // ---------- Helpers ----------
+    void SafeSet(TMP_Text t, string s) { if (t) t.text = s ?? ""; }
 
     string Modes(GameFlags f)
     {
@@ -175,12 +207,35 @@ public class UISelectBand : MonoBehaviour
         bool v = (f & GameFlags.Versus2P) != 0;
         bool c = (f & GameFlags.Coop2P)   != 0;
         bool a = (f & GameFlags.Alt2P)    != 0;
-
         string m = "";
         if (s) m += "1P ";
         if (v) m += "2P VS ";
         if (c) m += "2P COOP ";
         if (a) m += "2P ALT ";
         return m.Trim();
+    }
+
+    // Deterministic, nice-ish palette from game number
+    Color AutoColor(GameDef def)
+    {
+        // Spread hues around the wheel; keep saturation/value punchy
+        float hue = ((def.number * 37) % 360) / 360f;
+        var c = Color.HSVToRGB(hue, 0.65f, 0.95f);
+        c.a = 1f;
+        return c;
+    }
+
+    void ApplyColorBlock(Selectable s, Color accent)
+    {
+        var cb = s.colors;
+        cb.colorMultiplier = 1f;
+        cb.fadeDuration    = 0.08f;
+        cb.normalColor     = new Color(1,1,1,1);           // we tint via frame; keep neutral here
+        cb.highlightedColor= Color.Lerp(accent, Color.white, 0.35f);
+        cb.selectedColor   = Color.Lerp(accent, Color.white, 0.20f);
+        cb.pressedColor    = Color.Lerp(accent, Color.black, 0.20f);
+        cb.disabledColor   = new Color(0.5f,0.5f,0.5f,0.5f);
+        s.transition = Selectable.Transition.ColorTint;
+        s.colors = cb;
     }
 }
