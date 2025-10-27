@@ -8,14 +8,18 @@ public static class RetroDraw
     static GUIStyle small, big;
     static bool stylesReady;
 
+    // Dynamic logical view
+    static int _baseW = 160, _baseH = 192;
+    static int _viewW = 160, _viewH = 192;
+    public  static int ViewW => _viewW;
+    public  static int ViewH => _viewH;
+
     static void Ensure()
     {
         if (!m)
         {
             m = new Material(Shader.Find("Hidden/Internal-Colored"))
-            {
-                hideFlags = HideFlags.HideAndDontSave
-            };
+            { hideFlags = HideFlags.HideAndDontSave };
             m.SetInt("_ZWrite", 0);
             m.SetInt("_Cull", 0);
             m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
@@ -41,6 +45,18 @@ public static class RetroDraw
             };
             stylesReady = true;
         }
+    }
+
+    /// Call at top of each OnGUI
+    public static void Begin(int sw, int sh)
+    {
+        Ensure();
+        _baseW = Mathf.Max(1, sw);
+        _baseH = Mathf.Max(1, sh);
+
+        float aspect = (float)Screen.width / Mathf.Max(1, Screen.height);
+        _viewH = _baseH;
+        _viewW = Mathf.Max(1, Mathf.RoundToInt(_viewH * aspect));
     }
 
     public static void Rect(Rect r, Color c)
@@ -77,48 +93,50 @@ public static class RetroDraw
         Rect(new Rect(r.xMax - w, r.yMin, w, r.height), c);
     }
 
-    // Pixel-space rect using a logical resolution (sw x sh), origin bottom-left.
+    // Pixel-space rect in dynamic logical view
     public static void PixelRect(int x, int y, int w, int h, int sw, int sh, Color c)
     {
-        float rx = (float)x / sw, ry = (float)y / sh, rw = (float)w / sw, rh = (float)h / sh;
+        float rx = (float)x / _viewW;
+        float ry = (float)y / _viewH;
+        float rw = (float)w / _viewW;
+        float rh = (float)h / _viewH;
         Rect(new Rect(rx, ry, rw, rh), c);
     }
 
-    // --- Pixel-space text helpers ------------------------------------------
-
-    // Draws text at logical pixel coordinates (x,y) with origin at bottom-left.
-    // We scale GUI.matrix so 1 unit == 1 logical pixel in sw x sh space.
+    // --- Text helpers ---
     static void Print(string text, int x, int y, int sw, int sh, Color color, GUIStyle style)
     {
         Ensure();
-
-        // Save/replace GUI state
         var prevColor  = GUI.color;
         var prevMatrix = GUI.matrix;
 
-        float sx = Screen.width  / (float)sw;
-        float sy = Screen.height / (float)sh;
+        float sx = Screen.width  / Mathf.Max(1f, _viewW);
+        float sy = Screen.height / Mathf.Max(1f, _viewH);
         GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(sx, sy, 1f));
         GUI.color  = color;
 
-        // GUI coordinates are top-left origin; convert from bottom-left.
-        // Give a generous width so we don't wrap.
         int h = Mathf.CeilToInt(style.lineHeight);
-        var r = new Rect(x, (sh - y) - h, sw - x, h + 2);
+        var r = new Rect(x, (_viewH - y) - h, _viewW - x, h + 2);
         GUI.Label(r, text, style);
 
-        // Restore GUI state
         GUI.color  = prevColor;
         GUI.matrix = prevMatrix;
     }
 
     public static void PrintSmall(int x, int y, string text, int sw, int sh, Color color)
-    {
-        Print(text, x, y, sw, sh, color, small);
-    }
+    { Print(text, x, y, sw, sh, color, small); }
 
     public static void PrintBig(int x, int y, string text, int sw, int sh, Color color)
+    { Print(text, x, y, sw, sh, color, big); }
+
+    // --- Small shape helper used by SoundBound ---
+    public static void PixelStar(int x, int y, int sw, int sh, Color c)
     {
-        Print(text, x, y, sw, sh, color, big);
+        // simple 5-point pixel star shape ~7x5 footprint
+        PixelRect(x - 0, y + 2, 1, 1, sw, sh, c);
+        PixelRect(x - 2, y + 1, 5, 1, sw, sh, c);
+        PixelRect(x - 1, y + 0, 3, 1, sw, sh, c);
+        PixelRect(x - 2, y - 1, 5, 1, sw, sh, c);
+        PixelRect(x - 0, y - 2, 1, 1, sw, sh, c);
     }
 }

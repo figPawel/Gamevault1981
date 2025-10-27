@@ -51,6 +51,7 @@ public class UIManager : MonoBehaviour
         selectRoot.alpha = on?1:0;
         selectRoot.interactable = on;
         selectRoot.blocksRaycasts = on;
+        
     
     }
 
@@ -89,6 +90,11 @@ public class UIManager : MonoBehaviour
         btnInGameCoop.onClick.RemoveAllListeners();
         btnInGameAlt.onClick.RemoveAllListeners();
         btnInGameQuit.onClick.RemoveAllListeners();
+btnInGameQuit.onClick.AddListener(() =>
+{
+    ShowInGameMenu(false);   // <<< hide the menu overlay
+    _meta.OpenSelection();   // back to the main game selection (or your title)
+});
 
         btnInGameSolo.onClick.AddListener(()=>{ ShowInGameMenu(false); gm.StartMode(GameMode.Solo); });
         btnInGameVs.onClick.AddListener(()=>{ ShowInGameMenu(false); gm.StartMode(GameMode.Versus2P); });
