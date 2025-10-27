@@ -213,38 +213,43 @@ public class MetaGameManager : MonoBehaviour
     public void StopMusic()          { PlayMusic(null); }
 
     // ---------- Screens ----------
-    public void OpenTitle()
-    {
-        StopGame();
-        ui.ShowTitle(true);
-        ui.ShowSelect(false);
+   public void OpenTitle()
+{
+    StopGame();
+    ui.ShowTitle(true);
+    ui.ShowSelect(false);
 
-        // Per request: DO NOT play anything here automatically.
-        StopMusic();
-    }
+    // was: StopMusic();
+    PlayTitleMusic();
+}
 
-    public void OpenSelection()
-    {
-        StopGame();
-        ui.BindSelection(Games);
-        ui.ShowTitle(false);
-        ui.ShowSelect(true);
+public void OpenSelection()
+{
+    StopGame();
+    ui.BindSelection(Games);
+    ui.ShowTitle(false);
+    ui.ShowSelect(true);
 
-        // Per request: DO NOT play anything automatically.
-        StopMusic();
-    }
+    // was: StopMusic();
+    if (selectionMusic) PlaySelectionMusic();
+    else if (titleMusic) PlayTitleMusic(); // keep title track if selection track not set
+    else StopMusic();
+}
 
     // ---------- Game lifecycle ----------
     public void StartGame(GameDef def)
 {
-    if (def == null) return;
+        if (def == null) return;
+    
+       StopMusic();
 
     // Do NOT launch if no implementation type yet.
     if (def.implType == null)
     {
         Debug.LogWarning($"[Gamevault] StartGame blocked: '{def.title}' (id='{def.id}') not implemented yet.");
-     
-        return;
+
+            return;
+        
     }
 
     StopGame();
