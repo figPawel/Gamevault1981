@@ -9,8 +9,14 @@ public class RetroAudio : MonoBehaviour
 
     void Awake() { sr = AudioSettings.outputSampleRate; }
 
-    public void BeepOnce(float freq, float sec, float gain=0.1f)
-    { q.Enqueue(new Beep{ f=freq, t=sec, gain=gain }); }
+    public void BeepOnce(float freq, float sec, float gain = 0.1f)
+    { q.Enqueue(new Beep { f = freq, t = sec, gain = gain }); }
+    
+    public void PlayMelody(float[] freqs, float noteSec = 0.08f, float gain = 0.08f)
+{
+    if (freqs == null) return;
+    foreach (var f in freqs) BeepOnce(f, noteSec, gain);
+}
 
     void OnAudioFilterRead(float[] data, int channels)
     {

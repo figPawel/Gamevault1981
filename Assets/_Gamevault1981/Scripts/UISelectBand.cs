@@ -25,7 +25,8 @@ public void Bind(GameDef def, MetaGameManager meta)
     titleText.text=def.title; numberText.text="#"+def.number; descText.text=def.desc; modesText.text=Modes(def.flags);
     var p = Path.Combine(Application.streamingAssetsPath, $"covers/{def.id}.jpg");
     if (File.Exists(p)){ var tex=new Texture2D(2,2,TextureFormat.RGBA32,false); tex.LoadImage(File.ReadAllBytes(p)); cartridgeImage.texture=tex; }
-    btnPlay.onClick.RemoveAllListeners(); btnPlay.onClick.AddListener(()=>_meta.StartGame(_def));
+    btnPlay.onClick.RemoveAllListeners(); btnPlay.onClick.AddListener(() => _meta.StartGame(_def));
+    
     btnInfo.onClick.RemoveAllListeners(); btnInfo.onClick.AddListener(()=>ToggleInfo());
     infoPanel.SetActive(false); statsText.text="1P best: –   2P best: –";
 }

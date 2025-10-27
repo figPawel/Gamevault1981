@@ -1,90 +1,168 @@
 using UnityEngine;
+using System;
 
 public class BeamerGame : GameManager
 {
-    int sw=160, sh=192;
-    float x, y, vy;
-    float energy=1f;
-    float recharge=0f;
+    const int sw = 160, sh = 192;
+
+    // Player
+    float px = 24, py = 24;
+    float vy;
+    bool alive = true;
+
+    // Beam
+    float energy;           // 0..1
+    bool beaming;
+    float rechargeRate = 0.45f;
+    float drainRate    = 0.55f;
+
+    // World lanes
+    struct Pad { public float x; public int w; }
+    struct Bomb { public float x; }
+    Pad[] pads = new Pad[4];
+    Bomb[] bombs = new Bomb[6];
     System.Random rng;
-    float[] bombsZ;
-    float speed=20f;
-    bool beam;
-    float padTimer;
-    bool alive=true;
+    float scroll = 26f;
 
     public override void Begin()
     {
-        rng = new System.Random(1234);
-        bombsZ = new float[8];
-        for(int i=0;i<bombsZ.Length;i++) bombsZ[i] = 80f + i*20f;
-        x=sw*0.5f; y=30f; vy=0f; energy=1f; recharge=0f; padTimer=0f; ScoreP1=0; alive=true;
+        rng = new System.Random(7);
+        ScoreP1 = 0; alive = true;
+        px = 28; py = 26; vy = 0;
+        energy = 1f; beaming = false;
+        scroll = 26f;
+
+        float x = 40;
+        for (int i = 0; i < pads.Length; i++)
+        {
+            int w = rng.Next(20, 36);
+            pads[i] = new Pad { x = x, w = w };
+            x += rng.Next(44, 80);
+        }
+        for (int i = 0; i < bombs.Length; i++)
+            bombs[i] = new Bomb { x = rng.Next(60, 260) };
+
+        // clean start sound
+        meta.audioBus.BeepOnce(180, 0.05f);
     }
 
-    public override void OnStartMode()
-    {
-        Begin();
-    }
+    public override void OnStartMode(){ Begin(); }
 
     void Update()
     {
         if (!Running) return;
+        if (HandleCommonPause()) return;
+
         float dt = Time.deltaTime;
-        if (!alive && BtnA()) { Begin(); return; }
 
-        beam = BtnA();
-        if (beam && energy>0f) { vy = 60f*dt; energy = Mathf.Max(0f, energy - 0.4f*dt); }
-        else { vy -= 90f*dt; }
-
-        y += vy;
-        if (y<10f) { alive=false; meta.audioBus.BeepOnce(120,0.12f); }
-        if (y>sh-10f) y=sh-10f;
-
-        float ax = AxisH();
-        x = Mathf.Clamp(x + ax*80f*dt, 10f, sw-10f);
-
-        for (int i=0;i<bombsZ.Length;i++)
+        if (!alive)
         {
-            bombsZ[i] -= speed*dt;
-            if (bombsZ[i]<0f)
+            if (BtnADown()) Begin();
+            return;
+        }
+
+        // Input
+        beaming = energy > 0.02f && BtnA();
+        if (beaming) energy = Mathf.Max(0f, energy - drainRate * dt);
+        else         energy = Mathf.Min(1f, energy + 0.12f * dt);
+
+        // Apply “anti-grav” while beaming, else we drop
+        if (beaming) vy = Mathf.Lerp(vy, 38f, 8f * dt);
+        else         vy -= 90f * dt;
+
+        py += vy * dt;
+        py = Mathf.Clamp(py, 18f, 120f);
+
+        // World scroll + spawn
+        for (int i = 0; i < pads.Length; i++) pads[i].x -= scroll * dt;
+        for (int i = 0; i < bombs.Length; i++) bombs[i].x -= scroll * dt;
+
+        if (pads[0].x + pads[0].w * 0.5f < -10f)
+        {
+            for (int i = 0; i < pads.Length - 1; i++) pads[i] = pads[i + 1];
+            var last = pads[pads.Length - 2];
+            int w = rng.Next(20, 40);
+            float next = last.x + last.w * 0.5f + rng.Next(48, 92) + w * 0.5f;
+            pads[^1] = new Pad { x = next, w = w };
+        }
+        if (bombs[0].x < -12f)
+        {
+            for (int i = 0; i < bombs.Length - 1; i++) bombs[i] = bombs[i + 1];
+            bombs[^1] = new Bomb { x = rng.Next(200, 320) };
+        }
+
+        // Recharge when over pad
+        bool overPad = false;
+        for (int i = 0; i < pads.Length; i++)
+        {
+            if (Mathf.Abs(px - pads[i].x) < pads[i].w * 0.5f)
             {
-                bombsZ[i] = 160f + (float)rng.NextDouble()*80f;
-                ScoreP1++;
-                speed = Mathf.Min(60f, speed + 0.2f);
+                overPad = true;
+                energy = Mathf.Min(1f, energy + rechargeRate * dt);
             }
         }
 
-        bool onPad = Mathf.Abs((y%40f)-20f)<3f;
-        if (onPad) energy = Mathf.Min(1f, energy + 0.7f*dt);
+        // Distance score
+        ScoreP1 += Mathf.FloorToInt(scroll * dt * 0.5f);
 
-        foreach (var bz in bombsZ)
+        // Death: touching ground without beam OR hit bomb
+        bool grounded = py <= 18f + 0.1f;
+        if (grounded && !beaming) alive = false;
+
+        for (int i = 0; i < bombs.Length; i++)
         {
-            if (Mathf.Abs(bz- (x))<6f && Mathf.Abs(y-100f)<24f) { alive=false; meta.audioBus.BeepOnce(90,0.15f); break; }
+            if (Mathf.Abs(px - bombs[i].x) < 5f && Mathf.Abs(py - 26f) < 12f)
+            { alive = false; break; }
         }
+
+        if (!alive) meta.audioBus.BeepOnce(70, 0.12f);
+
+        // Small difficulty ramp
+        if (overPad && energy > 0.95f) scroll = Mathf.Min(48f, scroll + 2f * dt);
     }
 
     void OnGUI()
     {
         if (!Running) return;
-        Color bg = new Color(0,0,0,1);
-        RetroDraw.Rect(new Rect(0,0,1,1), bg);
 
-        RetroDraw.PixelRect(0,0,sw,1,sw,sh,Color.black);
+        // Background scanlines
+        for (int y = 0; y < sh; y += 16)
+            RetroDraw.PixelRect(0, y, sw, 1, sw, sh, new Color(0, 0.25f, 0.1f, 0.25f));
 
-        RetroDraw.PixelRect((int)(x-2),(int)(y-2),4,4,sw,sh, new Color(0.6f,0.9f,1f,1f));
-        if (beam && energy>0f) RetroDraw.PixelRect((int)(x-1),0,2,(int)y,sw,sh,new Color(0.2f,0.8f,1f,0.8f));
+        // Ground line + pads
+        RetroDraw.PixelRect(0, 18, sw, 2, sw, sh, new Color(0.12f, 0.6f, 0.32f, 1f));
+        for (int i = 0; i < pads.Length; i++)
+        {
+            int x = Mathf.RoundToInt(pads[i].x);
+            RetroDraw.PixelRect(x - pads[i].w / 2, 12, pads[i].w, 6, sw, sh, new Color(0.21f, 0.88f, 0.42f, 1f));
+        }
 
-        for (int i=0;i<bombsZ.Length;i++)
-            RetroDraw.PixelRect((int)bombsZ[i]-3,94,6,12,sw,sh,new Color(1f,0.3f,0.3f,1));
+        // Bombs
+        for (int i = 0; i < bombs.Length; i++)
+        {
+            int x = Mathf.RoundToInt(bombs[i].x);
+            RetroDraw.PixelRect(x - 4, 20, 8, 6, sw, sh, new Color(1f, 0.28f, 0.18f, 1f));
+        }
 
-        for (int r=20;r<sh;r+=40)
-            RetroDraw.PixelRect(0,r-1,sw,2,sw,sh, new Color(0.2f,1f,0.6f,0.6f));
+        // Player + beam
+        if (beaming)
+            RetroDraw.PixelRect(Mathf.RoundToInt(px) - 1, 20, 2, Mathf.RoundToInt(py - 20), sw, sh, new Color(0.5f, 1f, 1f, 1f));
 
-        float w = Mathf.Clamp01(energy);
-        RetroDraw.Rect(new Rect(0.05f,0.92f,0.9f,0.03f), new Color(0,0,0,0.6f));
-        RetroDraw.Rect(new Rect(0.05f,0.92f,0.9f*w,0.03f), new Color(0.2f,0.9f,0.2f,0.9f));
+        RetroDraw.PixelRect(Mathf.RoundToInt(px) - 3, Mathf.RoundToInt(py) - 3, 6, 6, sw, sh, new Color(0.7f, 0.9f, 1f, 1f));
+
+        // Energy bar
+        RetroDraw.PixelRect(24, sh - 14, sw - 48, 6, sw, sh, new Color(0, 0, 0, 0.5f));
+        int ew = Mathf.RoundToInt((sw - 52) * Mathf.Clamp01(energy));
+        RetroDraw.PixelRect(26, sh - 13, ew, 4, sw, sh, new Color(0.4f, 1f, 1f, 1f));
 
         if (!alive)
-            RetroDraw.Rect(new Rect(0.2f,0.45f,0.6f,0.1f), new Color(0,0,0,0.7f));
+        {
+            RetroDraw.PixelRect(sw/2 - 52, sh/2 - 20, 104, 40, sw, sh, new Color(0, 0, 0, 0.75f));
+            RetroDraw.PrintBig(sw/2 - 36, sh/2 - 4, "GAME OVER", sw, sh, Color.white);
+            RetroDraw.PrintSmall(sw/2 - 42, sh/2 - 14, "A = RETRY   B = MENU", sw, sh, new Color(0.9f,0.9f,1f,1));
+            if (BackPressed()) QuitToMenu();
+        }
+
+        DrawCommonHUD(sw, sh);
     }
 }

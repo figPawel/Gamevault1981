@@ -23,6 +23,8 @@ public class UIManager : MonoBehaviour
     public Button btnInGameAlt;
     public Button btnInGameQuit;
 
+    public GameObject menuGridRoot;
+
     MetaGameManager _meta;
     List<GameObject> _bands = new();
 
@@ -40,6 +42,8 @@ public class UIManager : MonoBehaviour
         titleRoot.alpha = on?1:0;
         titleRoot.interactable = on;
         titleRoot.blocksRaycasts = on;
+         titleRoot.alpha = on?1:0; titleRoot.interactable = on; titleRoot.blocksRaycasts = on;
+    if (menuGridRoot) menuGridRoot.SetActive(on);
     }
 
     public void ShowSelect(bool on)
@@ -47,6 +51,7 @@ public class UIManager : MonoBehaviour
         selectRoot.alpha = on?1:0;
         selectRoot.interactable = on;
         selectRoot.blocksRaycasts = on;
+    
     }
 
     public void ShowInGameMenu(bool on)
@@ -54,6 +59,8 @@ public class UIManager : MonoBehaviour
         inGameMenuRoot.alpha = on?1:0;
         inGameMenuRoot.interactable = on;
         inGameMenuRoot.blocksRaycasts = on;
+        inGameMenuRoot.alpha = on?1:0; inGameMenuRoot.interactable = on; inGameMenuRoot.blocksRaycasts = on;
+    if (menuGridRoot && on) menuGridRoot.SetActive(false);
     }
 
     public void BindSelection(List<GameDef> games)

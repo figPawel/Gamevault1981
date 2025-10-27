@@ -32,20 +32,44 @@ public class MetaGameManager : MonoBehaviour
         OpenTitle();
     }
 
-   void BuildGameList()
+  void BuildGameList()
 {
     Games.Clear();
-    var path = Path.Combine(Application.streamingAssetsPath, "GameCatalog.json");
-    var json = File.ReadAllText(path);
+    var path = System.IO.Path.Combine(Application.streamingAssetsPath, "GameCatalog.json");
+    var json = System.IO.File.ReadAllText(path);
     var cat = JsonUtility.FromJson<Catalog>(json);
+
+    string Norm(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        s = s.ToLowerInvariant();
+        // keep letters+digits only
+        System.Text.StringBuilder sb = new System.Text.StringBuilder(s.Length);
+        foreach (char ch in s) if (char.IsLetterOrDigit(ch)) sb.Append(ch);
+        return sb.ToString();
+    }
+
     foreach (var e in cat.games)
     {
+        var idNorm = Norm(e.id);
         GameFlags f = 0;
-        foreach (var m in e.modes){ if(m=="1P") f|=GameFlags.Solo; if(m=="2P_VS") f|=GameFlags.Versus2P; if(m=="2P_COOP") f|=GameFlags.Coop2P; if(m=="2P_ALT") f|=GameFlags.Alt2P; }
-        var t = e.id=="beamer" ? typeof(BeamerGame)
-              : e.id=="pillarprince" ? typeof(PillarPrinceGame)
-              : typeof(BeamerGame);
-        Games.Add(new GameDef(e.id, e.title, e.number, e.desc, f, t));
+        foreach (var m in e.modes)
+        {
+            if (m=="1P") f |= GameFlags.Solo;
+            if (m=="2P_VS") f |= GameFlags.Versus2P;
+            if (m=="2P_COOP") f |= GameFlags.Coop2P;
+            if (m=="2P_ALT") f |= GameFlags.Alt2P;
+        }
+
+        // tolerant mapping
+        System.Type impl =
+            idNorm == "beamer"        ? typeof(BeamerGame) :
+            idNorm == "pillarprince"  ? typeof(PillarPrinceGame) :
+            typeof(BeamerGame);
+
+        var def = new GameDef(e.id, e.title, e.number, e.desc, f, impl);
+        Games.Add(def);
+        Debug.Log($"[Gamevault] Catalog: id='{e.id}' → norm='{idNorm}' → impl='{impl.Name}'");
     }
 }
     public void OpenTitle()
@@ -63,20 +87,20 @@ public class MetaGameManager : MonoBehaviour
         ui.ShowSelect(true);
     }
 
-    public void StartGame(GameDef def)
-    {
-        StopGame();
-        var go = new GameObject(def.id);
-        go.transform.SetParent(gameHost, false);
-        _current = (GameManager)go.AddComponent(def.implType);
-        _current.meta = this;
-        _current.Def = def;
-        _current.Begin();
-        ui.ShowTitle(false);
-        ui.ShowSelect(false);
-        ui.BindInGameMenu(_current);
-    }
-
+ public void StartGame(GameDef def)
+{
+    StopGame();
+    Debug.Log($"[Gamevault] StartGame: '{def.title}' (id='{def.id}', impl='{def.implType.Name}')");
+    var go = new GameObject(def.id);
+    go.transform.SetParent(gameHost, false);
+    _current = (GameManager)go.AddComponent(def.implType);
+    _current.meta = this;
+    _current.Def = def;
+    _current.Begin();
+    ui.ShowTitle(false);
+    ui.ShowSelect(false);
+    ui.BindInGameMenu(_current);
+}
     public void StopGame()
     {
         if (_current)
