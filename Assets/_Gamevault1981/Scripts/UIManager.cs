@@ -17,8 +17,13 @@ public class UIManager : MonoBehaviour
     public RectTransform listRoot;          // Content
     public GameObject bandPrefab;
     public Button btnBackFromSelect;
+
+public Button btnTopOptions;        // the secondary Options (in selection screen)
+public Button btnTopLeaderboards;   // the Leaderboards button
     public ScrollRect selectScroll;         // assign your ScrollRect
     public RectTransform selectViewport;    // assign ScrollRect.viewport
+
+    
 
     [Tooltip("Pixels of breathing room when centering a selected band.")]
     public float Viewportpad = 6.0f;
@@ -31,29 +36,35 @@ public class UIManager : MonoBehaviour
     public Button btnInGameAlt;
     public Button btnInGameQuit;
 
+    [Header("In-Game Cartridge (wire a blank one here)")]
+    public RawImage igCartridgeImage;
+    public TMP_Text igCartTitle;
+    public TMP_Text igCartNumber;
+    [SerializeField] string igLabelsFolder = "labels";
+    [SerializeField] Vector2 igDefaultFocus = new Vector2(0.5f, 0.5f);
+    [SerializeField] UISelectBand.LabelCropOverride[] igCropOverrides;
+
     [Header("Edge Spacers")]
-[Tooltip("If ON, spacer = (ViewportHeight * AutoEdgeFactor) + Viewportpad. If OFF, use explicit margins below.")]
-public bool UseAutoEdgeMargins = true;
-[Range(0f, 1f)] public float AutoEdgeFactor = 0.50f; // half viewport by default
-public float TopEdgeMargin = 0f;     // used when UseAutoEdgeMargins = false
-public float BottomEdgeMargin = 0f;  // used when UseAutoEdgeMargins = false
+    public bool UseAutoEdgeMargins = false;   // force OFF to avoid header shift
+    [Range(0f, 1f)] public float AutoEdgeFactor = 0.50f;
+    public float TopEdgeMargin = 0f;
+    public float BottomEdgeMargin = 0f;
 
     [Header("Optional / Effects")]
     public GameObject crtEffectRoot;
 
     [Header("Optional / Small HUD")]
-    public TMP_Text optionsToast;           // tiny label for feedback
+    public TMP_Text optionsToast;
 
     MetaGameManager _meta;
     readonly List<GameObject> _bands = new List<GameObject>();
 
-    // persisted options (cycled by Options button; shown via optionsToast)
     float _musicVol = 0.8f;
     float _sfxVol   = 1.0f;
     float _toastT;
 
-    // edge spacers so first/last items can center
     RectTransform _spacerTop, _spacerBottom;
+    bool _builtList = false;
 
     void Awake()
     {
@@ -65,32 +76,43 @@ public float BottomEdgeMargin = 0f;  // used when UseAutoEdgeMargins = false
         if (optionsToast) optionsToast.gameObject.SetActive(false);
     }
 
-    void Update()
+  void Update()
+{
+    // toast fade
+    if (_toastT > 0f && optionsToast)
     {
-        // fade-out for options toast
-        if (_toastT > 0f && optionsToast)
-        {
-            _toastT -= Time.unscaledDeltaTime;
-            float a = Mathf.Clamp01(Mathf.Min(_toastT, 0.25f) / 0.25f);
-            var c = optionsToast.color; c.a = a; optionsToast.color = c;
-            if (_toastT <= 0f) optionsToast.gameObject.SetActive(false);
-        }
+        _toastT -= Time.unscaledDeltaTime;
+        float a = Mathf.Clamp01(Mathf.Min(_toastT, 0.25f) / 0.25f);
+        var c = optionsToast.color; c.a = a; optionsToast.color = c;
+        if (_toastT <= 0f) optionsToast.gameObject.SetActive(false);
+    }
 
-        // When header buttons are focused while selection screen is active, snap list to top
-        if (selectRoot && selectRoot.interactable)
+    // Gamepad "Back" (B)
+    bool backPressed = false;
+#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+    if (UnityEngine.InputSystem.Gamepad.current != null &&
+        UnityEngine.InputSystem.Gamepad.current.bButton.wasPressedThisFrame)
+        backPressed = true;
+#else
+    if (Input.GetButtonDown("Cancel") || Input.GetKeyDown(KeyCode.JoystickButton1))
+        backPressed = true;
+#endif
+    if (backPressed) HandleBack();
+
+    // When a header button is focused, hard-pin list to top (prevents "snap back")
+    if (selectRoot && selectRoot.interactable && selectScroll)
+    {
+        var es  = EventSystem.current;
+        var sel = es ? es.currentSelectedGameObject : null;
+        if (sel &&
+            ((btnTopLeaderboards && sel == btnTopLeaderboards.gameObject) ||
+             (btnTopOptions      && sel == btnTopOptions.gameObject)      ||
+             (btnBackFromSelect  && sel == btnBackFromSelect.gameObject)))
         {
-            var es = EventSystem.current;
-            var sel = es ? es.currentSelectedGameObject : null;
-            if (sel)
-            {
-                if ((btnBackFromSelect && sel == btnBackFromSelect.gameObject) ||
-                    (btnOptions       && sel == btnOptions.gameObject))
-                {
-                    SnapToTop();
-                }
-            }
+            selectScroll.verticalNormalizedPosition = 1f;
         }
     }
+}
 
     public void Init(MetaGameManager meta)
     {
@@ -106,7 +128,7 @@ public float BottomEdgeMargin = 0f;  // used when UseAutoEdgeMargins = false
         ShowInGameMenu(false);
     }
 
-    // ---------- Visibility helpers ----------
+    // ---------- Visibility ----------
     public void ShowTitle(bool on)
     {
         if (!titleRoot) return;
@@ -127,11 +149,10 @@ public float BottomEdgeMargin = 0f;  // used when UseAutoEdgeMargins = false
 
         if (on && _bands.Count > 0)
         {
+            // Always go to the first band; hard reset scroll to top
             var firstBtn = _bands[0].GetComponentInChildren<Button>();
             if (firstBtn) EventSystem.current?.SetSelectedGameObject(firstBtn.gameObject);
-
-            var firstBand = _bands[0].GetComponent<UISelectBand>();
-            if (firstBand) ScrollToBand(firstBand.Rect);
+            if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
         }
     }
 
@@ -142,47 +163,112 @@ public float BottomEdgeMargin = 0f;  // used when UseAutoEdgeMargins = false
         inGameMenuRoot.interactable = on;
         inGameMenuRoot.blocksRaycasts = on;
 
+        // While in-game menu is open, selection is inert.
+        if (selectRoot)
+        {
+            selectRoot.interactable  = !on && selectRoot.alpha > 0.5f;
+            selectRoot.blocksRaycasts= !on && selectRoot.alpha > 0.5f;
+        }
+
         if (on && btnInGameSolo)
             EventSystem.current?.SetSelectedGameObject(btnInGameSolo.gameObject);
     }
 
     // ---------- Selection list ----------
+    // Build once; reuse across opens for instant menu.
     public void BindSelection(List<GameDef> games)
     {
-        foreach (var b in _bands) if (b) Destroy(b);
-        _bands.Clear();
+        // Build once; reuse across opens for instant menu.
+        if (_builtList) return;
 
         foreach (var g in games)
         {
-            var go = Instantiate(bandPrefab, listRoot);
+            var go = Object.Instantiate(bandPrefab, listRoot);
             var band = go.GetComponent<UISelectBand>();
             if (band != null)
             {
                 band.Bind(g, _meta);
-                band.onSelected = (rect) => ScrollToBand(rect); // auto-scroll when focused
+                // RESTORED: auto-scroll when a band gains focus (gamepad/keyboard select)
+                band.onSelected = (rect) => ScrollToBand(rect);
             }
             _bands.Add(go);
         }
 
-        EnsureEdgeSpacers();
+        EnsureEdgeSpacers();          // spacers are locked to 0 in EnsureEdgeSpacers()
+        WireVerticalNavigationForBands();
 
+        _builtList = true;
+
+        // Select the first band + snap to very top immediately
         if (_bands.Count > 0)
         {
-            WireVerticalNavigationForBands();
-            var first = _bands[0].GetComponentInChildren<Button>();
-            if (first) EventSystem.current?.SetSelectedGameObject(first.gameObject);
+            var firstBtn = _bands[0].GetComponentInChildren<Button>();
+            if (firstBtn) EventSystem.current?.SetSelectedGameObject(firstBtn.gameObject);
+            if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
         }
     }
 
+void ScrollToBand(RectTransform item)
+{
+    // Only when selection is active & interactive
+    if (!selectRoot || !selectRoot.interactable || !selectScroll || !selectScroll.content || !selectViewport || !item)
+        return;
+
+    // Ensure the item actually belongs to this content
+    if (item.transform == null || item.transform.parent != selectScroll.content) return;
+
+    var content   = selectScroll.content;
+    var viewport  = selectViewport;
+
+    float contentH   = content.rect.height;
+    float viewportH  = viewport.rect.height;
+    float scrollable = contentH - viewportH;
+    if (scrollable <= 0.001f) return;
+
+    // Find item's center in content space
+    Vector3[] corners = new Vector3[4];
+    item.GetWorldCorners(corners);
+    Vector3 localTop    = content.InverseTransformPoint(corners[1]);
+    Vector3 localBottom = content.InverseTransformPoint(corners[0]);
+    float itemCenter    = (localTop.y + localBottom.y) * 0.5f;
+
+    float contentTopY   = (1f - content.pivot.y) * contentH;
+    float centerFromTop = contentTopY - itemCenter;
+
+    float desiredFromTop = Mathf.Clamp(
+        centerFromTop - (viewportH * 0.5f) + Mathf.Max(0f, Viewportpad * 0.25f),
+        0f, scrollable
+    );
+
+    // RESTORED: instant snap (no lerp) so gamepad feels crisp
+    float targetNorm = 1f - Mathf.Clamp01(desiredFromTop / scrollable);
+    selectScroll.verticalNormalizedPosition = targetNorm;
+}
+
     // ---------- In-Game Menu wiring ----------
-    public void OpenInGameMenuFor(GameManager gm)
+    public void BindInGameMenu(GameManager gm)
     {
+        // Render the same cartridge and tint the title
+        if (gm != null && gm.Def != null && igCartridgeImage != null)
+        {
+            UISelectBand.PaintCartridgeForGame(
+                gm.Def,
+                igCartridgeImage,
+                igCartTitle,
+                igCartNumber,
+                igLabelsFolder,
+                igDefaultFocus,
+                igCropOverrides
+            );
+            if (igCartTitle != null) igCartTitle.color = UISelectBand.AccentFor(gm.Def);
+        }
+
         ShowInGameMenu(true);
 
         if (btnInGameSolo) btnInGameSolo.onClick.RemoveAllListeners();
-        if (btnInGameVs)   btnInGameVs.onClick.RemoveAllListeners();
+        if (btnInGameVs) btnInGameVs.onClick.RemoveAllListeners();
         if (btnInGameCoop) btnInGameCoop.onClick.RemoveAllListeners();
-        if (btnInGameAlt)  btnInGameAlt.onClick.RemoveAllListeners();
+        if (btnInGameAlt) btnInGameAlt.onClick.RemoveAllListeners();
         if (btnInGameQuit) btnInGameQuit.onClick.RemoveAllListeners();
 
         if (btnInGameQuit) btnInGameQuit.onClick.AddListener(() =>
@@ -192,55 +278,13 @@ public float BottomEdgeMargin = 0f;  // used when UseAutoEdgeMargins = false
         });
 
         if (btnInGameSolo) btnInGameSolo.onClick.AddListener(() => { ShowInGameMenu(false); gm.StartMode(GameMode.Solo); });
-        if (btnInGameVs)   btnInGameVs  .onClick.AddListener(() => { ShowInGameMenu(false); gm.StartMode(GameMode.Versus2P); });
+        if (btnInGameVs) btnInGameVs.onClick.AddListener(() => { ShowInGameMenu(false); gm.StartMode(GameMode.Versus2P); });
         if (btnInGameCoop) btnInGameCoop.onClick.AddListener(() => { ShowInGameMenu(false); gm.StartMode(GameMode.Coop2P); });
-        if (btnInGameAlt)  btnInGameAlt .onClick.AddListener(() => { ShowInGameMenu(false); gm.StartMode(GameMode.Alt2P); });
+        if (btnInGameAlt) btnInGameAlt.onClick.AddListener(() => { ShowInGameMenu(false); gm.StartMode(GameMode.Alt2P); });
     }
 
-    // Backwards-compatible alias:
-    public void BindInGameMenu(GameManager gm) => OpenInGameMenuFor(gm);
-
-    // ---------- Auto-scroll logic ----------
-    // Centers the selected band in the viewport by driving verticalNormalizedPosition.
-    void ScrollToBand(RectTransform item)
-    {
-        if (!selectScroll || !selectScroll.content || !selectViewport || !item) return;
-
-        var content   = selectScroll.content;
-        var viewport  = selectViewport;
-
-        float contentH   = content.rect.height;
-        float viewportH  = viewport.rect.height;
-        float scrollable = contentH - viewportH;
-        if (scrollable <= 0.001f) return;
-
-        // Item top/bottom in CONTENT local space
-        Vector3[] corners = new Vector3[4];
-        item.GetWorldCorners(corners);
-        Vector3 localTop    = content.InverseTransformPoint(corners[1]);
-        Vector3 localBottom = content.InverseTransformPoint(corners[0]);
-
-        float itemCenter = (localTop.y + localBottom.y) * 0.5f;
-
-        // In content space, top edge y = (1 - pivot.y) * height
-        float contentTopY   = (1f - content.pivot.y) * contentH;
-        float centerFromTop = contentTopY - itemCenter;
-
-        // Aim dead-center (+ tiny breathing room)
-        float desiredFromTop = Mathf.Clamp(
-            centerFromTop - (viewportH * 0.5f) + Mathf.Max(0f, Viewportpad * 0.25f),
-            0f, scrollable
-        );
-
-        float targetNorm = 1f - Mathf.Clamp01(desiredFromTop / scrollable);
-
-        // Snappy but not jarring; set directly for instant snap
-        selectScroll.verticalNormalizedPosition =
-            Mathf.Lerp(selectScroll.verticalNormalizedPosition, targetNorm, 0.8f);
-    }
-
-    // Create/update top/bottom spacers so first/last bands can center in the viewport.
-    void EnsureEdgeSpacers()
+    // ---------- Spacers (locked to zero to avoid pushing header/logo) ----------
+   void EnsureEdgeSpacers()
 {
     if (!selectScroll || !selectScroll.content || !selectViewport) return;
 
@@ -285,74 +329,123 @@ public float BottomEdgeMargin = 0f;  // used when UseAutoEdgeMargins = false
     {
         if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
     }
-
-    // ---------- Navigation lane for controller/D-pad ----------
-    void WireVerticalNavigationForBands()
+   void WireVerticalNavigationForBands()
+{
+    var bandButtons = new List<Button>();
+    foreach (var go in _bands)
     {
-        var bandButtons = new List<Button>();
-        foreach (var go in _bands)
-        {
-            if (!go) continue;
-            var band = go.GetComponent<UISelectBand>();
-            if (band && band.bandButton) bandButtons.Add(band.bandButton);
-        }
-
-        for (int i = 0; i < bandButtons.Count; i++)
-        {
-            var b = bandButtons[i];
-            var nav = new Navigation { mode = Navigation.Mode.Explicit };
-
-            nav.selectOnUp   = (i > 0) ? bandButtons[i - 1] : (btnBackFromSelect ? btnBackFromSelect : btnOptions);
-            nav.selectOnDown = (i < bandButtons.Count - 1) ? bandButtons[i + 1] : null;
-
-            // Preserve left/right links (UISelectBand may have set them)
-            var prev = b.navigation;
-            nav.selectOnLeft  = prev.selectOnLeft;
-            nav.selectOnRight = prev.selectOnRight;
-
-            b.navigation = nav;
-        }
-
-        // Header buttons point back down into the list
-        if (btnBackFromSelect && bandButtons.Count > 0)
-        {
-            var nav = btnBackFromSelect.navigation;
-            nav.mode = Navigation.Mode.Explicit;
-            nav.selectOnDown = bandButtons[0];
-            btnBackFromSelect.navigation = nav;
-        }
-        if (btnOptions && bandButtons.Count > 0)
-        {
-            var nav = btnOptions.navigation;
-            nav.mode = Navigation.Mode.Explicit;
-            nav.selectOnDown = bandButtons[0];
-            btnOptions.navigation = nav;
-        }
+        if (!go) continue;
+        var band = go.GetComponent<UISelectBand>();
+        if (band && band.bandButton) bandButtons.Add(band.bandButton);
     }
 
-    // ---------- Options (no new screens) ----------
-    // Cycles music & sfx volumes (100 → 60 → 30 → 0 → …) and toggles CRT on/off.
+    // Choose the "top" target for going up from the first band
+    Button topUp = btnTopLeaderboards ? btnTopLeaderboards
+                 : (btnTopOptions ? btnTopOptions
+                 : (btnBackFromSelect ? btnBackFromSelect : btnOptions));
+
+    for (int i = 0; i < bandButtons.Count; i++)
+    {
+        var b = bandButtons[i];
+        var nav = new Navigation { mode = Navigation.Mode.Explicit };
+
+        nav.selectOnUp   = (i > 0) ? bandButtons[i - 1] : topUp;
+        nav.selectOnDown = (i < bandButtons.Count - 1) ? bandButtons[i + 1] : null;
+
+        // keep existing left/right if you set them elsewhere
+        var prev = b.navigation;
+        nav.selectOnLeft  = prev.selectOnLeft;
+        nav.selectOnRight = prev.selectOnRight;
+
+        b.navigation = nav;
+    }
+
+    // Make the top buttons go DOWN into the first band
+    if (bandButtons.Count > 0)
+    {
+        var firstBand = bandButtons[0];
+
+        if (btnTopLeaderboards)
+        {
+            var n = btnTopLeaderboards.navigation; n.mode = Navigation.Mode.Explicit;
+            n.selectOnDown = firstBand;
+            btnTopLeaderboards.navigation = n;
+        }
+        if (btnTopOptions)
+        {
+            var n = btnTopOptions.navigation; n.mode = Navigation.Mode.Explicit;
+            n.selectOnDown = firstBand;
+            btnTopOptions.navigation = n;
+        }
+        if (btnBackFromSelect)
+        {
+            var n = btnBackFromSelect.navigation; n.mode = Navigation.Mode.Explicit;
+            n.selectOnDown = firstBand;
+            btnBackFromSelect.navigation = n;
+        }
+        if (btnOptions)
+        {
+            var n = btnOptions.navigation; n.mode = Navigation.Mode.Explicit;
+            n.selectOnDown = firstBand;
+            btnOptions.navigation = n;
+        }
+    }
+}
+
+    // ---------- Options ----------
     void CycleBasicOptions()
     {
         float[] steps = { 1f, 0.6f, 0.3f, 0f };
         int nextM = (System.Array.IndexOf(steps, _musicVol) + 1) % steps.Length;
-        int nextS = (System.Array.IndexOf(steps, _sfxVol)   + 1) % steps.Length;
+        int nextS = (System.Array.IndexOf(steps, _sfxVol) + 1) % steps.Length;
 
         _musicVol = steps[nextM];
-        _sfxVol   = steps[nextS];
+        _sfxVol = steps[nextS];
 
         AudioListener.volume = _musicVol;
         RetroAudio.GlobalSfxVolume = _sfxVol;
 
         PlayerPrefs.SetFloat("opt_music", _musicVol);
-        PlayerPrefs.SetFloat("opt_sfx",   _sfxVol);
+        PlayerPrefs.SetFloat("opt_sfx", _sfxVol);
 
         bool crt = !(crtEffectRoot && crtEffectRoot.activeSelf);
         if (crtEffectRoot) crtEffectRoot.SetActive(crt);
         PlayerPrefs.SetInt("opt_crt", crt ? 1 : 0);
 
-        ShowOptionsToast($"Music {Mathf.RoundToInt(_musicVol*100)}%  •  SFX {Mathf.RoundToInt(_sfxVol*100)}%  •  CRT {(crt ? "ON" : "OFF")}");
+        ShowOptionsToast($"Music {Mathf.RoundToInt(_musicVol * 100)}%  •  SFX {Mathf.RoundToInt(_sfxVol * 100)}%  •  CRT {(crt ? "ON" : "OFF")}");
     }
+    
+    void HandleBack()
+{
+    // If in-game menu is open, B = Quit back to band list
+    if (inGameMenuRoot && inGameMenuRoot.interactable && inGameMenuRoot.alpha > 0.5f)
+    {
+        ShowInGameMenu(false);
+        _meta.QuitToSelection();
+        return;
+    }
+
+    // If actively playing (no in-game menu, selection hidden), B = open in-game menu
+    if (selectRoot && (selectRoot.alpha < 0.5f || !selectRoot.interactable))
+    {
+        ShowInGameMenu(true);
+        if (btnInGameQuit) EventSystem.current?.SetSelectedGameObject(btnInGameQuit.gameObject);
+        return;
+    }
+
+    // If on selection screen, B = back to title
+    if (selectRoot && selectRoot.interactable && selectRoot.alpha > 0.5f)
+    {
+        OpenTitleFromSelection();
+        return;
+    }
+}
+
+// Small wrapper so you can tweak later if needed
+void OpenTitleFromSelection()
+{
+    _meta.OpenTitle();
+}
 
     void ShowOptionsToast(string msg)
     {
@@ -360,6 +453,6 @@ public float BottomEdgeMargin = 0f;  // used when UseAutoEdgeMargins = false
         optionsToast.text = msg;
         optionsToast.gameObject.SetActive(true);
         var c = optionsToast.color; c.a = 1f; optionsToast.color = c;
-        _toastT = 1.25f; // seconds on screen
+        _toastT = 1.25f;
     }
 }

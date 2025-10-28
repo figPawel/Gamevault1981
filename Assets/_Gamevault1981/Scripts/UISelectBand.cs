@@ -255,4 +255,127 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         s.transition = Selectable.Transition.ColorTint;
         s.colors = cb;
     }
+
+    // ============================================================
+    // ============  SHARED STATIC CARTRIDGE PAINTER  =============
+    // ============================================================
+    // Lets other UI (in-game menu) render the *same* cartridge without a new script.
+    public static void PaintCartridgeForGame(
+        GameDef def,
+        RawImage cartridgeImage,
+        TMP_Text cartTitleText,
+        TMP_Text numberText)
+    {
+        PaintCartridgeForGame(def, cartridgeImage, cartTitleText, numberText,
+                              "labels", new Vector2(0.5f, 0.5f), null);
+    }
+
+    public static void PaintCartridgeForGame(
+        GameDef def,
+        RawImage cartridgeImage,
+        TMP_Text cartTitleText,
+        TMP_Text numberText,
+        string labelsFolder,
+        Vector2 defaultFocus,
+        LabelCropOverride[] cropOverrides)
+    {
+        if (def == null || cartridgeImage == null) return;
+
+        if (cartTitleText) cartTitleText.text = def.title ?? "";
+        if (numberText)    numberText.text    = $"#{def.number}";
+
+        // Load texture from StreamingAssets/labels or /covers using id or title
+        Texture2D tex = TryLoadLabelTextureStatic(def, labelsFolder);
+        cartridgeImage.texture = tex;
+        cartridgeImage.uvRect  = new Rect(0,0,1,1);
+
+        if (tex == null) return;
+
+        tex.filterMode = FilterMode.Point;
+        tex.wrapMode   = TextureWrapMode.Clamp;
+
+        var rt = cartridgeImage.rectTransform.rect;
+        float targetAspect = (rt.height <= 0f) ? 1.0f : (rt.width / rt.height);
+
+        var focus = FindFocusStatic(def.id, defaultFocus, cropOverrides);
+        ApplyCoverCropStatic(cartridgeImage, tex, targetAspect, focus);
+    }
+
+    static Texture2D TryLoadLabelTextureStatic(GameDef def, string labelsFolder)
+    {
+        string sa = Application.streamingAssetsPath;
+
+        Texture2D Try(string p)
+        {
+            if (!File.Exists(p)) return null;
+            var bytes = File.ReadAllBytes(p);
+            var t = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            t.LoadImage(bytes, false);
+            t.name = Path.GetFileNameWithoutExtension(p);
+            return t;
+        }
+
+        string[] names   = { def.id, def.title };
+        string[] exts    = { ".png", ".jpg", ".jpeg" };
+        string[] folders = { Path.Combine(sa, labelsFolder), Path.Combine(sa, "covers") };
+
+        foreach (var folder in folders)
+        foreach (var n in names)
+        {
+            if (string.IsNullOrEmpty(n)) continue;
+            foreach (var e in exts)
+            {
+                var tex = Try(Path.Combine(folder, n + e));
+                if (tex != null) return tex;
+            }
+        }
+        return null;
+    }
+
+    static Vector2 FindFocusStatic(string id, Vector2 defaultFocus, LabelCropOverride[] cropOverrides)
+    {
+        if (cropOverrides != null)
+        {
+            for (int i = 0; i < cropOverrides.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(cropOverrides[i].id) &&
+                    string.Equals(cropOverrides[i].id, id, StringComparison.OrdinalIgnoreCase))
+                {
+                    var f = cropOverrides[i].focus;
+                    return new Vector2(Mathf.Clamp01(f.x), Mathf.Clamp01(f.y));
+                }
+            }
+        }
+        return new Vector2(Mathf.Clamp01(defaultFocus.x), Mathf.Clamp01(defaultFocus.y));
+    }
+
+    public static Color AccentFor(GameDef def)
+{
+    float hue = ((def.number * 37) % 360) / 360f;
+    var c = Color.HSVToRGB(hue, 0.65f, 0.95f);
+    c.a = 1f;
+    return c;
+}
+
+
+    static void ApplyCoverCropStatic(RawImage img, Texture2D tex, float targetAspect, Vector2 focus01)
+    {
+        if (tex == null) { img.uvRect = new Rect(0,0,1,1); return; }
+
+        float srcAspect = (float)tex.width / Mathf.Max(1, tex.height);
+        focus01 = new Vector2(Mathf.Clamp01(focus01.x), Mathf.Clamp01(focus01.y));
+
+        if (srcAspect > targetAspect)
+        {
+            float uvW = targetAspect / srcAspect;
+            float u   = Mathf.Clamp(focus01.x - uvW * 0.5f, 0f, 1f - uvW);
+            img.uvRect = new Rect(u, 0f, uvW, 1f);
+        }
+        else
+        {
+            float uvH = srcAspect / targetAspect;
+            float v   = Mathf.Clamp(focus01.y - uvH * 0.5f, 0f, 1f - uvH);
+            img.uvRect = new Rect(0f, v, 1f, uvH);
+        }
+    }
 }
