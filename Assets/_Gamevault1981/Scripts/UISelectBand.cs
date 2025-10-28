@@ -35,6 +35,10 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     [Tooltip("Leave alpha=0 to auto-generate from game number.")]
     public Color highlightOverride = new Color(0,0,0,0);
 
+    // NEW: lets UIManager auto-scroll this into view when it gets focus
+    public Action<RectTransform> onSelected;
+    public RectTransform Rect => transform as RectTransform;
+
     GameDef _def;
     MetaGameManager _meta;
     Color _highlight;
@@ -82,21 +86,34 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
             nPlay.selectOnRight = bandButton ? bandButton : null;
             btnPlay.navigation = nPlay;
         }
-        
+
         if (bandButton && !bandButton.targetGraphic)
-{
-    // Prefer a designated frame; else use the band’s background image; else use the cartridge
-    bandButton.targetGraphic = (bandHighlightFrame ? (Graphic)bandHighlightFrame
-                                 : (Graphic)bandButton.GetComponent<Image>())
-                                 ?? (Graphic)cartridgeImage;
-}
+        {
+            // Prefer a designated frame; else use the band’s background image; else use the cartridge
+            bandButton.targetGraphic = (bandHighlightFrame ? (Graphic)bandHighlightFrame
+                                         : (Graphic)bandButton.GetComponent<Image>())
+                                         ?? (Graphic)cartridgeImage;
+        }
     }
 
     // ---------- EventSystem hooks (controller/keyboard navigation) ----------
-    public void OnSelect(BaseEventData e)   => SetHighlight(true);
+    public void OnSelect(BaseEventData e)
+    {
+        SetHighlight(true);
+        onSelected?.Invoke(Rect); // NEW: tell UI to scroll me into view
+    }
+
     public void OnDeselect(BaseEventData e) => SetHighlight(false);
-    public void OnPointerClick(PointerEventData e) { if (bandButton && bandButton.interactable) _meta.StartGame(_def); }
-    public void OnSubmit(BaseEventData e)   { if (bandButton && bandButton.interactable) _meta.StartGame(_def); }
+
+    public void OnPointerClick(PointerEventData e)
+    {
+        if (bandButton && bandButton.interactable) _meta.StartGame(_def);
+    }
+
+    public void OnSubmit(BaseEventData e)
+    {
+        if (bandButton && bandButton.interactable) _meta.StartGame(_def);
+    }
 
     void SetHighlight(bool on)
     {
