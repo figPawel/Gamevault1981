@@ -123,7 +123,11 @@ public class OptionBand : MonoBehaviour,
         }
     }
 
-    public void OnSubmit(BaseEventData e) => SubmitOrNext();
+   public void OnSubmit(BaseEventData e)
+{
+    _right?.Invoke();  
+    Refresh();
+}
 
     public void OnPointerClick(PointerEventData e)
     {

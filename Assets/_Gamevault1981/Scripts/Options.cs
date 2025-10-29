@@ -300,9 +300,10 @@ public class Options : MonoBehaviour
             return best;
         }
 
-        void SetIdx(int i) { i = Mathf.Clamp(i, 0, steps.Length - 1); set(steps[i]); }
-        void Left()  { SetIdx(IndexOf(get()) - 1); RefreshLast(); }
-        void Right() { SetIdx(IndexOf(get()) + 1); RefreshLast(); }
+ int  Wrap(int i) { int m = i % steps.Length; return m < 0 ? m + steps.Length : m; }
+void SetIdx(int i) { set(steps[Wrap(i)]); }
+void Left()  { SetIdx(IndexOf(get()) - 1); RefreshLast(); }
+void Right() { SetIdx(IndexOf(get()) + 1); RefreshLast(); }
         string Value() => $"{Mathf.RoundToInt(Mathf.Clamp01(get()) * 100f)}%";
 
         MakeRow(label, Value, Left, Right);

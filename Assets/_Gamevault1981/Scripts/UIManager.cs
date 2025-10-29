@@ -77,15 +77,17 @@ public class UIManager : MonoBehaviour
         if (optionsToast) optionsToast.gameObject.SetActive(false);
     }
 
-    void Start()
-    {
-        ClearSelection();
-        WireTitleNavigation();
-        ShowInGameMenu(false);
-        ShowSelect(false);
-        ShowTitle(true);
-        if (btnPlay) EventSystem.current?.SetSelectedGameObject(btnPlay.gameObject);
-    }
+  void Start()
+{
+    ClearSelection();
+    WireTitleNavigation();
+    ShowInGameMenu(false);
+    ShowSelect(false);
+    ShowTitle(true);
+    var first = FirstTitleButton();
+    if (first) EventSystem.current?.SetSelectedGameObject(first.gameObject);
+}
+
 
     void Update()
     {
@@ -141,16 +143,26 @@ public class UIManager : MonoBehaviour
         // Keep viewport pinned to top when a header button is focused
         if (selectRoot && selectRoot.interactable && selectScroll)
         {
-            var es  = EventSystem.current;
+            var es = EventSystem.current;
             var sel = es ? es.currentSelectedGameObject : null;
             if (sel &&
                 ((btnTopLeaderboards && sel == btnTopLeaderboards.gameObject) ||
-                 (btnTopOptions      && sel == btnTopOptions.gameObject)      ||
-                 (btnBackFromSelect  && sel == btnBackFromSelect.gameObject)))
+                 (btnTopOptions && sel == btnTopOptions.gameObject) ||
+                 (btnBackFromSelect && sel == btnBackFromSelect.gameObject)))
             {
                 selectScroll.verticalNormalizedPosition = 1f;
             }
         }
+        if (TitleActive())
+        {
+            var es = EventSystem.current;
+            if (es && (!es.currentSelectedGameObject || !es.currentSelectedGameObject.activeInHierarchy))
+            {
+                var first = FirstTitleButton();
+                if (first) es.SetSelectedGameObject(first.gameObject);
+            }
+        }
+    StickyFocusGuard();
     }
 
     public void Init(MetaGameManager meta)
@@ -169,26 +181,27 @@ public class UIManager : MonoBehaviour
 
     // ---------- Visibility ----------
     public void ShowTitle(bool on)
+{
+    if (!titleRoot) return;
+
+    if (on)
     {
-        if (!titleRoot) return;
-
-        if (on)
-        {
-            if (selectRoot) { selectRoot.interactable = false; selectRoot.blocksRaycasts = false; }
-            if (inGameMenuRoot) { inGameMenuRoot.interactable = false; inGameMenuRoot.blocksRaycasts = false; }
-        }
-
-        titleRoot.alpha = on ? 1 : 0;
-        titleRoot.interactable = on;
-        titleRoot.blocksRaycasts = on;
-
-        if (on)
-        {
-            ClearSelection();
-            WireTitleNavigation();
-            if (btnPlay) EventSystem.current?.SetSelectedGameObject(btnPlay.gameObject);
-        }
+        if (selectRoot)   { selectRoot.interactable = false;   selectRoot.blocksRaycasts = false; }
+        if (inGameMenuRoot){ inGameMenuRoot.interactable = false; inGameMenuRoot.blocksRaycasts = false; }
     }
+
+    titleRoot.alpha = on ? 1 : 0;
+    titleRoot.interactable = on;
+    titleRoot.blocksRaycasts = on;
+
+    if (on)
+    {
+        ClearSelection();
+        WireTitleNavigation();
+        var first = FirstTitleButton();
+        if (first) EventSystem.current?.SetSelectedGameObject(first.gameObject);
+    }
+}
 
     public void ShowSelect(bool on)
     {
@@ -203,6 +216,7 @@ public class UIManager : MonoBehaviour
             var firstBtn = _bands[0].GetComponentInChildren<Button>();
             if (firstBtn) EventSystem.current?.SetSelectedGameObject(firstBtn.gameObject);
             if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+            ScrollToBand(_bands[0].GetComponent<UISelectBand>()?.Rect);
         }
     }
 
@@ -377,9 +391,9 @@ public class UIManager : MonoBehaviour
             if (band && band.bandButton) bandButtons.Add(band.bandButton);
         }
 
-        Button topMid = btnTopLeaderboards ? btnTopLeaderboards
-                     : (btnTopOptions ? btnTopOptions
-                     : (btnBackFromSelect ? btnBackFromSelect : btnOptions));
+       Button topMid = btnBackFromSelect ? btnBackFromSelect
+             : (btnTopLeaderboards ? btnTopLeaderboards
+             : (btnTopOptions ? btnTopOptions : btnOptions));
 
         for (int i = 0; i < bandButtons.Count; i++)
         {
@@ -528,26 +542,87 @@ public class UIManager : MonoBehaviour
         if (es && es.currentSelectedGameObject != null)
             es.SetSelectedGameObject(null);
     }
+void WireTitleNavigation()
+{
+    var list = new List<Button>();
+    if (btnPlay)  list.Add(btnPlay);
+    if (btnOptions) list.Add(btnOptions);   
+    if (btnQuit)  list.Add(btnQuit);
 
-    void WireTitleNavigation()
+    if (list.Count == 0) return;
+
+    for (int i = 0; i < list.Count; i++)
     {
-        if (!btnPlay || !btnOptions || !btnQuit) return;
-
-        var nPlay = btnPlay.navigation; nPlay.mode = Navigation.Mode.Explicit;
-        nPlay.selectOnUp   = null;
-        nPlay.selectOnDown = btnOptions;
-        btnPlay.navigation = nPlay;
-
-        var nOpt = btnOptions.navigation; nOpt.mode = Navigation.Mode.Explicit;
-        nOpt.selectOnUp   = btnPlay;
-        nOpt.selectOnDown = btnQuit;
-        btnOptions.navigation = nOpt;
-
-        var nQuit = btnQuit.navigation; nQuit.mode = Navigation.Mode.Explicit;
-        nQuit.selectOnUp   = btnOptions;
-        nQuit.selectOnDown = null;
-        btnQuit.navigation = nQuit;
+        var n = list[i].navigation;
+        n.mode = Navigation.Mode.Explicit;
+        n.selectOnUp   = (i > 0) ? list[i - 1] : null;
+        n.selectOnDown = (i < list.Count - 1) ? list[i + 1] : null;
+        list[i].navigation = n;
     }
+}
+
+    Button FirstTitleButton()
+    {
+        if (btnPlay) return btnPlay;
+        if (btnOptions) return btnOptions;   // safe if you later bring it back
+        if (btnQuit) return btnQuit;
+        return null;
+    }
+
+Button FirstBandButton()
+{
+    foreach (var go in _bands)
+    {
+        if (!go) continue;
+        var b = go.GetComponent<UISelectBand>()?.bandButton;
+        if (b && b.isActiveAndEnabled && b.interactable) return b;
+    }
+    return null;
+}
+
+void StickyFocusGuard()
+{
+    var es = EventSystem.current;
+    if (!es) return;
+
+    // Title
+    if (TitleActive())
+    {
+        if (!es.currentSelectedGameObject || !es.currentSelectedGameObject.activeInHierarchy ||
+            !es.currentSelectedGameObject.transform.IsChildOf(titleRoot.transform))
+        {
+            if (btnPlay) es.SetSelectedGameObject(btnPlay.gameObject);
+        }
+        return;
+    }
+
+    // Selection (bands + header)
+    if (SelectionActive())
+    {
+        var sel = es.currentSelectedGameObject;
+        if (!sel || !sel.activeInHierarchy || !sel.transform.IsChildOf(selectRoot.transform))
+        {
+            var fb = FirstBandButton();
+            GameObject g = fb ? fb.gameObject
+                              : (btnBackFromSelect ? btnBackFromSelect.gameObject
+                                 : (btnTopLeaderboards ? btnTopLeaderboards.gameObject
+                                    : (btnTopOptions ? btnTopOptions.gameObject : null)));
+            if (g) es.SetSelectedGameObject(g);
+        }
+        return;
+    }
+
+    // In-Game menu
+    if (InGameMenuActive())
+    {
+        var sel = es.currentSelectedGameObject;
+        if (!sel || !sel.activeInHierarchy || !sel.transform.IsChildOf(inGameMenuRoot.transform))
+        {
+            if (btnInGameSolo)      es.SetSelectedGameObject(btnInGameSolo.gameObject);
+            else if (btnInGameQuit) es.SetSelectedGameObject(btnInGameQuit.gameObject);
+        }
+    }
+}
 
     void ShowOptionsToast(string msg)
     {
