@@ -1,7 +1,7 @@
+// === GameManager.cs — DROP-IN ===
+// Purged Legacy Input. Input System only. Provides A/Fire, Back, Pause helpers used across games.
 using UnityEngine;
-#if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
-#endif
 
 public enum GameMode { Solo = 0, Versus2P = 1, Coop2P = 2, Alt2P = 3 }
 
@@ -42,10 +42,8 @@ public abstract class GameManager : MonoBehaviour
     }
 
     // ---------------- A / FIRE ----------------
-    // LEFT mouse only.
     protected bool BtnA(int p = 1)
     {
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
         var k = Keyboard.current; var g = Gamepad.current; var m = Mouse.current;
         bool kb = k != null && (
             k.spaceKey.isPressed || k.enterKey.isPressed ||
@@ -57,22 +55,14 @@ public abstract class GameManager : MonoBehaviour
         bool ms = m != null && m.leftButton.isPressed;
         bool gp = g != null && (
             g.buttonSouth.isPressed || g.buttonWest.isPressed || g.buttonNorth.isPressed ||
-            g.rightTrigger.ReadValue() > 0.3f || g.leftTrigger.ReadValue() > 0.3f
+            g.rightTrigger.ReadValue() > 0.3f || g.leftTrigger.ReadValue() > 0.3f ||
+            g.leftShoulder.isPressed || g.rightShoulder.isPressed
         );
         return kb || ms || gp;
-#else
-        return Input.GetMouseButton(0) ||
-               Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.Return) ||
-               Input.GetKey(KeyCode.E) || Input.GetKey(KeyCode.R) ||
-               Input.GetKey(KeyCode.G) || Input.GetKey(KeyCode.H) ||
-               Input.GetKey(KeyCode.Z) || Input.GetKey(KeyCode.X) ||
-               Input.GetKey(KeyCode.LeftControl) || Input.GetButton("Fire1");
-#endif
     }
 
     protected bool BtnADown(int p = 1)
     {
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
         var k = Keyboard.current; var g = Gamepad.current; var m = Mouse.current;
         bool kb = k != null && (
             k.spaceKey.wasPressedThisFrame || k.enterKey.wasPressedThisFrame ||
@@ -83,19 +73,12 @@ public abstract class GameManager : MonoBehaviour
         );
         bool ms = m != null && m.leftButton.wasPressedThisFrame;
         bool gp = g != null && (
-            g.buttonSouth.wasPressedThisFrame || g.buttonWest.wasPressedThisFrame ||
-            g.buttonNorth.wasPressedThisFrame ||
-            g.rightTrigger.wasPressedThisFrame || g.leftTrigger.wasPressedThisFrame
+            g.buttonSouth.wasPressedThisFrame ||
+            g.buttonWest.wasPressedThisFrame  || g.buttonNorth.wasPressedThisFrame ||
+            g.rightTrigger.wasPressedThisFrame || g.leftTrigger.wasPressedThisFrame ||
+            g.leftShoulder.wasPressedThisFrame || g.rightShoulder.wasPressedThisFrame
         );
         return kb || ms || gp;
-#else
-        return Input.GetMouseButtonDown(0) ||
-               Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return) ||
-               Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.R) ||
-               Input.GetKeyDown(KeyCode.G) || Input.GetKeyDown(KeyCode.H) ||
-               Input.GetKeyDown(KeyCode.Z) || Input.GetKeyDown(KeyCode.X) ||
-               Input.GetKeyDown(KeyCode.LeftControl);
-#endif
     }
 
     protected bool BtnADownUI(int p = 1)
@@ -109,21 +92,14 @@ public abstract class GameManager : MonoBehaviour
         return fired;
     }
 
-    // ---------------- BACK (local to games) ----------------
-    // Backspace, Gamepad B/East, or RIGHT mouse button.
+    // ---------------- BACK ----------------
     protected bool BackPressed()
     {
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
         var k = Keyboard.current; var g = Gamepad.current; var m = Mouse.current;
         bool kb = k != null && k.backspaceKey.isPressed;
-        bool gp = g != null && g.buttonEast.isPressed;
+        bool gp = g != null && g.buttonEast.isPressed; // B
         bool ms = m != null && m.rightButton.isPressed;
         return kb || gp || ms;
-#else
-        return Input.GetKey(KeyCode.Backspace) ||
-               Input.GetKey(KeyCode.JoystickButton1) ||
-               Input.GetMouseButton(1);
-#endif
     }
 
     protected bool BackPressedUI()
@@ -137,16 +113,12 @@ public abstract class GameManager : MonoBehaviour
         return fired;
     }
 
-    // ---------------- PAUSE (Esc/Start) ----------------
+    // ---------------- PAUSE ----------------
     protected bool PausePressed()
     {
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
         var k = Keyboard.current; var g = Gamepad.current;
         return (k != null && (k.escapeKey.wasPressedThisFrame || k.pKey.wasPressedThisFrame))
             || (g != null && (g.startButton.wasPressedThisFrame || g.selectButton.wasPressedThisFrame));
-#else
-        return Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P);
-#endif
     }
 
     // Call at TOP of each game’s Update()
@@ -166,7 +138,6 @@ public abstract class GameManager : MonoBehaviour
         return Paused;
     }
 
-    // Minimal HUD + pause card
     protected void DrawCommonHUD(int sw, int sh)
     {
         RetroDraw.PixelRect(2, sh - 11, 68, 9, sw, sh, new Color(0, 0, 0, 1f));
