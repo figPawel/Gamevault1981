@@ -339,10 +339,10 @@ void ScrollToBand(RectTransform item)
             _meta.QuitToSelection();
         });
 
-        if (btnInGameSolo) btnInGameSolo.onClick.AddListener(() => { ShowInGameMenu(false); gm.StartMode(GameMode.Solo); });
-        if (btnInGameVs) btnInGameVs.onClick.AddListener(() => { ShowInGameMenu(false); gm.StartMode(GameMode.Versus2P); });
-        if (btnInGameCoop) btnInGameCoop.onClick.AddListener(() => { ShowInGameMenu(false); gm.StartMode(GameMode.Coop2P); });
-        if (btnInGameAlt) btnInGameAlt.onClick.AddListener(() => { ShowInGameMenu(false); gm.StartMode(GameMode.Alt2P); });
+       if (btnInGameSolo) btnInGameSolo.onClick.AddListener(() => { ShowInGameMenu(false); _meta.StartGame(gm.Def, GameMode.Solo); });
+if (btnInGameVs)   btnInGameVs  .onClick.AddListener(() => { ShowInGameMenu(false); _meta.StartGame(gm.Def, GameMode.Versus2P); });
+if (btnInGameCoop) btnInGameCoop.onClick.AddListener(() => { ShowInGameMenu(false); _meta.StartGame(gm.Def, GameMode.Coop2P); });
+if (btnInGameAlt)  btnInGameAlt .onClick.AddListener(() => { ShowInGameMenu(false); _meta.StartGame(gm.Def, GameMode.Alt2P); });
     }
 
     // ---------- Spacers (locked to zero to avoid pushing header/logo) ----------

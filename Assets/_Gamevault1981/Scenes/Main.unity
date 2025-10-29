@@ -4590,8 +4590,8 @@ MonoBehaviour:
   listRoot: {fileID: 1190183738}
   bandPrefab: {fileID: 7919669846977238603, guid: 9046a41bf70c6804a862d85bc75d3b1d, type: 3}
   btnBackFromSelect: {fileID: 1821519009}
-  btnTopOptions: {fileID: 0}
-  btnTopLeaderboards: {fileID: 0}
+  btnTopOptions: {fileID: 954399324}
+  btnTopLeaderboards: {fileID: 2115419978}
   selectScroll: {fileID: 1520795940}
   selectViewport: {fileID: 348020725}
   Viewportpad: 6

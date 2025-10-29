@@ -237,35 +237,51 @@ public void OpenSelection()
     else StopMusic();
 }
 
-    public void StartGame(GameDef def)
+    public void StartGame(GameDef def, GameMode? autoMode = null)
+{
+    if (def == null) return;
+
+    StopMusic();
+
+    if (def.implType == null)
     {
-        if (def == null) return;
+        Debug.LogWarning($"[Gamevault] StartGame blocked: '{def.title}' (id='{def.id}') not implemented yet.");
+        return;
+    }
 
-        StopMusic();
+    // Remember which band launched this game
+    _lastSelectedOnList = def;
 
-        if (def.implType == null)
-        {
-            Debug.LogWarning($"[Gamevault] StartGame blocked: '{def.title}' (id='{def.id}') not implemented yet.");
-            return;
-        }
+    // Kill any previous instance
+    StopGame();
 
-        // Remember which band launched this game
-        _lastSelectedOnList = def;
+    Debug.Log($"[Gamevault] StartGame: '{def.title}' (id='{def.id}', impl='{def.implType.Name}')");
+    var go = new GameObject(def.id);
+    go.transform.SetParent(gameHost, false);
 
-        StopGame();
+    _current = (GameManager)go.AddComponent(def.implType);
+    _current.meta = this;
+    _current.Def  = def;
+    _current.Begin();
 
-        Debug.Log($"[Gamevault] StartGame: '{def.title}' (id='{def.id}', impl='{def.implType.Name}')");
-        var go = new GameObject(def.id);
-        go.transform.SetParent(gameHost, false);
-        _current = (GameManager)go.AddComponent(def.implType);
-        _current.meta = this;
-        _current.Def = def;
-        _current.Begin();
+    // Meta UI state
+    ui.ShowTitle(false);
+    ui.ShowSelect(false);
 
-        ui.ShowTitle(false);
-        ui.ShowSelect(false);
+    if (autoMode.HasValue)
+    {
+        // Start requested mode immediately, keep menu hidden
+        _current.StartMode(autoMode.Value);
+        // (Optional: play per-game music if you have it)
+        // if (genericGameMusic) PlayMusic(genericGameMusic);
+    }
+    else
+    {
+        // Normal path: show the in-game menu bound to this fresh instance
         ui.BindInGameMenu(_current);
     }
+}
+
 
     public void StopGame()
     {
