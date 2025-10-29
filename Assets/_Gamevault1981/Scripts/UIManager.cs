@@ -590,8 +590,6 @@ void WireTitleNavigation()
     btnQuit.navigation = nQuit;
 }
 
-
-
     void ShowOptionsToast(string msg)
     {
         if (!optionsToast) return;
