@@ -275,7 +275,7 @@ public class SoundBoundGame : GameManager
             RetroDraw.PrintBig  (vw/2 - 40, sh/2 - 4, "GAME OVER", sw, sh, Color.white);
             RetroDraw.PrintSmall(vw/2 - 56, sh/2 - 14, "A: RETRY    Back: MENU", sw, sh, new Color(0.9f,0.9f,1f,1));
             if (BtnADown()) Begin();
-            if (BackPressed()) QuitToMenu();
+       
         }
     }
 

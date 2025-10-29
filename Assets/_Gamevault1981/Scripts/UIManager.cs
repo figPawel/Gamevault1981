@@ -63,20 +63,38 @@ public Button btnTopLeaderboards;   // the Leaderboards button
     float _sfxVol   = 1.0f;
     float _toastT;
 
+
+
+    // Input routing
+float _backHold = 0f;
+const float BackHoldToQuit = 0.35f;
+
     RectTransform _spacerTop, _spacerBottom;
     bool _builtList = false;
+
+
 
     void Awake()
     {
         _musicVol = PlayerPrefs.GetFloat("opt_music", 0.8f);
-        _sfxVol   = PlayerPrefs.GetFloat("opt_sfx",   1.0f);
+        _sfxVol = PlayerPrefs.GetFloat("opt_sfx", 1.0f);
         AudioListener.volume = _musicVol;
         RetroAudio.GlobalSfxVolume = _sfxVol;
         if (crtEffectRoot) crtEffectRoot.SetActive(PlayerPrefs.GetInt("opt_crt", 1) != 0);
         if (optionsToast) optionsToast.gameObject.SetActive(false);
     }
+    
+    void Start()
+{
+    ClearSelection();
+    WireTitleNavigation();
+    ShowInGameMenu(false);
+    ShowSelect(false);
+    ShowTitle(true);
+    if (btnPlay) EventSystem.current?.SetSelectedGameObject(btnPlay.gameObject);
+}
 
-  void Update()
+void Update()
 {
     // toast fade
     if (_toastT > 0f && optionsToast)
@@ -87,19 +105,48 @@ public Button btnTopLeaderboards;   // the Leaderboards button
         if (_toastT <= 0f) optionsToast.gameObject.SetActive(false);
     }
 
-    // Gamepad "Back" (B)
-    bool backPressed = false;
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
-    if (UnityEngine.InputSystem.Gamepad.current != null &&
-        UnityEngine.InputSystem.Gamepad.current.bButton.wasPressedThisFrame)
-        backPressed = true;
-#else
-    if (Input.GetButtonDown("Cancel") || Input.GetKeyDown(KeyCode.JoystickButton1))
-        backPressed = true;
-#endif
-    if (backPressed) HandleBack();
+    // -------- Unified input routing (Back & Pause) --------
+    bool backDown = false, backHeld = false, pauseDown = false;
 
-    // When a header button is focused, hard-pin list to top (prevents "snap back")
+#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+    var gp = UnityEngine.InputSystem.Gamepad.current;
+    if (gp != null)
+    {
+        if (gp.bButton.wasPressedThisFrame) backDown = true;
+        if (gp.bButton.isPressed) backHeld = true;
+        if (gp.startButton.wasPressedThisFrame) pauseDown = true;
+    }
+#else
+    if (Input.GetKeyDown(KeyCode.JoystickButton1)) backDown = true; // B
+    if (Input.GetKey(KeyCode.JoystickButton1)) backHeld = true;     // B held
+    if (Input.GetKeyDown(KeyCode.JoystickButton7)) pauseDown = true; // Start
+#endif
+
+    // Keyboard / mouse fallbacks
+    if (Input.GetKeyDown(KeyCode.Backspace)) backDown = true;
+    if (Input.GetKey(KeyCode.Backspace)) backHeld = true;
+    if (Input.GetMouseButtonDown(1)) backDown = true;       // right mouse = Back
+    if (Input.GetMouseButton(1)) backHeld = true;
+
+    if (Input.GetKeyDown(KeyCode.Escape)) pauseDown = true; // Esc = Pause
+
+    // Back hold-to-quit timer
+    if (backHeld) _backHold += Time.unscaledDeltaTime;
+    else _backHold = 0f;
+
+    // Force quit-to-bands on long hold anywhere
+    if (_backHold >= BackHoldToQuit)
+    {
+        _backHold = 0f;
+        QuitToBandsNow();
+    }
+    else
+    {
+        if (backDown) HandleBackSinglePress();
+        if (pauseDown) HandlePauseToggle();
+    }
+
+    // Keep viewport pinned to top when a header button is focused
     if (selectRoot && selectRoot.interactable && selectScroll)
     {
         var es  = EventSystem.current;
@@ -113,6 +160,7 @@ public Button btnTopLeaderboards;   // the Leaderboards button
         }
     }
 }
+
 
     public void Init(MetaGameManager meta)
     {
@@ -129,20 +177,33 @@ public Button btnTopLeaderboards;   // the Leaderboards button
     }
 
     // ---------- Visibility ----------
-    public void ShowTitle(bool on)
-    {
-        if (!titleRoot) return;
-        titleRoot.alpha = on ? 1 : 0;
-        titleRoot.interactable = on;
-        titleRoot.blocksRaycasts = on;
+  public void ShowTitle(bool on)
+{
+    if (!titleRoot) return;
 
-        if (on && btnPlay)
-            EventSystem.current?.SetSelectedGameObject(btnPlay.gameObject);
+    // make other screens inert
+    if (on)
+    {
+        if (selectRoot) { selectRoot.interactable = false; selectRoot.blocksRaycasts = false; }
+        if (inGameMenuRoot) { inGameMenuRoot.interactable = false; inGameMenuRoot.blocksRaycasts = false; }
     }
+
+    titleRoot.alpha = on ? 1 : 0;
+    titleRoot.interactable = on;
+    titleRoot.blocksRaycasts = on;
+
+    if (on)
+    {
+        ClearSelection();
+        WireTitleNavigation();
+        if (btnPlay) EventSystem.current?.SetSelectedGameObject(btnPlay.gameObject);
+    }
+}
 
     public void ShowSelect(bool on)
     {
         if (!selectRoot) return;
+          if (on) ClearSelection();
         selectRoot.alpha = on ? 1 : 0;
         selectRoot.interactable = on;
         selectRoot.blocksRaycasts = on;
@@ -159,6 +220,7 @@ public Button btnTopLeaderboards;   // the Leaderboards button
     public void ShowInGameMenu(bool on)
     {
         if (!inGameMenuRoot) return;
+          if (on) ClearSelection();
         inGameMenuRoot.alpha = on ? 1 : 0;
         inGameMenuRoot.interactable = on;
         inGameMenuRoot.blocksRaycasts = on;
@@ -329,66 +391,73 @@ void ScrollToBand(RectTransform item)
     {
         if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
     }
-   void WireVerticalNavigationForBands()
+    void WireVerticalNavigationForBands()
+    {
+        var bandButtons = new List<Button>();
+        foreach (var go in _bands)
+        {
+            if (!go) continue;
+            var band = go.GetComponent<UISelectBand>();
+            if (band && band.bandButton) bandButtons.Add(band.bandButton);
+        }
+
+        // Middle/top anchor (default to Leaderboards if assigned)
+        Button topMid = btnTopLeaderboards ? btnTopLeaderboards
+                     : (btnTopOptions ? btnTopOptions
+                     : (btnBackFromSelect ? btnBackFromSelect : btnOptions));
+
+        // Bands: up/down chain + up from first goes to topMid
+        for (int i = 0; i < bandButtons.Count; i++)
+        {
+            var b = bandButtons[i];
+            var nav = new Navigation { mode = Navigation.Mode.Explicit };
+
+            nav.selectOnUp = (i > 0) ? bandButtons[i - 1] : topMid;
+            nav.selectOnDown = (i < bandButtons.Count - 1) ? bandButtons[i + 1] : null;
+
+            var prev = b.navigation;
+            nav.selectOnLeft = prev.selectOnLeft;
+            nav.selectOnRight = prev.selectOnRight;
+
+            b.navigation = nav;
+        }
+
+        WireTopHeaderNavigation(bandButtons.Count > 0 ? bandButtons[0] : null);
+    }
+
+void WireTopHeaderNavigation(Button firstBand)
 {
-    var bandButtons = new List<Button>();
-    foreach (var go in _bands)
+    // Chain: Options ↕ Leaderboards ↕ Back
+    if (btnTopOptions)
     {
-        if (!go) continue;
-        var band = go.GetComponent<UISelectBand>();
-        if (band && band.bandButton) bandButtons.Add(band.bandButton);
+        var n = btnTopOptions.navigation; n.mode = Navigation.Mode.Explicit;
+        n.selectOnDown = btnTopLeaderboards ? btnTopLeaderboards : (firstBand ? firstBand : n.selectOnDown);
+        // no selectOnUp (top of stack)
+        btnTopOptions.navigation = n;
     }
 
-    // Choose the "top" target for going up from the first band
-    Button topUp = btnTopLeaderboards ? btnTopLeaderboards
-                 : (btnTopOptions ? btnTopOptions
-                 : (btnBackFromSelect ? btnBackFromSelect : btnOptions));
-
-    for (int i = 0; i < bandButtons.Count; i++)
+    if (btnTopLeaderboards)
     {
-        var b = bandButtons[i];
-        var nav = new Navigation { mode = Navigation.Mode.Explicit };
-
-        nav.selectOnUp   = (i > 0) ? bandButtons[i - 1] : topUp;
-        nav.selectOnDown = (i < bandButtons.Count - 1) ? bandButtons[i + 1] : null;
-
-        // keep existing left/right if you set them elsewhere
-        var prev = b.navigation;
-        nav.selectOnLeft  = prev.selectOnLeft;
-        nav.selectOnRight = prev.selectOnRight;
-
-        b.navigation = nav;
+        var n = btnTopLeaderboards.navigation; n.mode = Navigation.Mode.Explicit;
+        n.selectOnUp   = btnTopOptions;
+        n.selectOnDown = btnBackFromSelect ? btnBackFromSelect : (firstBand ? firstBand : n.selectOnDown);
+        btnTopLeaderboards.navigation = n;
     }
 
-    // Make the top buttons go DOWN into the first band
-    if (bandButtons.Count > 0)
+    if (btnBackFromSelect)
     {
-        var firstBand = bandButtons[0];
+        var n = btnBackFromSelect.navigation; n.mode = Navigation.Mode.Explicit;
+        n.selectOnUp   = btnTopLeaderboards ? btnTopLeaderboards : btnTopOptions;
+        n.selectOnDown = firstBand;
+        btnBackFromSelect.navigation = n;
+    }
 
-        if (btnTopLeaderboards)
-        {
-            var n = btnTopLeaderboards.navigation; n.mode = Navigation.Mode.Explicit;
-            n.selectOnDown = firstBand;
-            btnTopLeaderboards.navigation = n;
-        }
-        if (btnTopOptions)
-        {
-            var n = btnTopOptions.navigation; n.mode = Navigation.Mode.Explicit;
-            n.selectOnDown = firstBand;
-            btnTopOptions.navigation = n;
-        }
-        if (btnBackFromSelect)
-        {
-            var n = btnBackFromSelect.navigation; n.mode = Navigation.Mode.Explicit;
-            n.selectOnDown = firstBand;
-            btnBackFromSelect.navigation = n;
-        }
-        if (btnOptions)
-        {
-            var n = btnOptions.navigation; n.mode = Navigation.Mode.Explicit;
-            n.selectOnDown = firstBand;
-            btnOptions.navigation = n;
-        }
+    // Fallback: if neither top options nor back exist, let Title Options drop into first band
+    if (!btnTopOptions && !btnBackFromSelect && btnOptions && firstBand)
+    {
+        var n = btnOptions.navigation; n.mode = Navigation.Mode.Explicit;
+        n.selectOnDown = firstBand;
+        btnOptions.navigation = n;
     }
 }
 
@@ -414,38 +483,114 @@ void ScrollToBand(RectTransform item)
 
         ShowOptionsToast($"Music {Mathf.RoundToInt(_musicVol * 100)}%  •  SFX {Mathf.RoundToInt(_sfxVol * 100)}%  •  CRT {(crt ? "ON" : "OFF")}");
     }
-    
-    void HandleBack()
+
+
+bool SelectionActive() =>
+    selectRoot && selectRoot.alpha > 0.5f && selectRoot.interactable;
+
+bool InGameMenuActive() =>
+    inGameMenuRoot && inGameMenuRoot.alpha > 0.5f && inGameMenuRoot.interactable;
+
+bool TitleActive() =>
+    titleRoot && titleRoot.alpha > 0.5f && titleRoot.interactable;
+bool PlayingActive() =>
+    !TitleActive() && !SelectionActive() && !InGameMenuActive();
+
+
+void HandleBackSinglePress()
 {
-    // If in-game menu is open, B = Quit back to band list
-    if (inGameMenuRoot && inGameMenuRoot.interactable && inGameMenuRoot.alpha > 0.5f)
+    // Back does nothing on Title
+    if (TitleActive()) return;
+
+    // If we're in gameplay (including Game Over overlays):
+    // 1) stop the game so it can't also react to B,
+    // 2) open the in-game menu.
+    if (PlayingActive())
+    {
+        _meta.StopGame();                       // <— kill the running game/camera first
+        ShowInGameMenu(true);
+        if (btnInGameSolo)
+            EventSystem.current?.SetSelectedGameObject(btnInGameSolo.gameObject);
+        return;
+    }
+
+    // If the in-game menu is already open, Back = close it (resume meta UI).
+    if (InGameMenuActive())
     {
         ShowInGameMenu(false);
-        _meta.QuitToSelection();
         return;
     }
 
-    // If actively playing (no in-game menu, selection hidden), B = open in-game menu
-    if (selectRoot && (selectRoot.alpha < 0.5f || !selectRoot.interactable))
-    {
-        ShowInGameMenu(true);
-        if (btnInGameQuit) EventSystem.current?.SetSelectedGameObject(btnInGameQuit.gameObject);
-        return;
-    }
-
-    // If on selection screen, B = back to title
-    if (selectRoot && selectRoot.interactable && selectRoot.alpha > 0.5f)
+    // If we're on the bands/selection screen, Back returns to Title.
+    if (SelectionActive())
     {
         OpenTitleFromSelection();
         return;
     }
 }
 
-// Small wrapper so you can tweak later if needed
-void OpenTitleFromSelection()
+
+void HandlePauseToggle()
 {
-    _meta.OpenTitle();
+    if (TitleActive()) return; // Esc/Start does nothing on title
+
+    if (PlayingActive())
+    {
+        ShowInGameMenu(true);
+        if (btnInGameSolo) EventSystem.current?.SetSelectedGameObject(btnInGameSolo.gameObject);
+    }
+    else if (InGameMenuActive())
+    {
+        ShowInGameMenu(false); // resume
+    }
 }
+void QuitToBandsNow()
+{
+    Time.timeScale = 1f;          // safety: games may have paused time
+    ShowInGameMenu(false);
+    _meta.QuitToSelection();
+    // put focus somewhere predictable
+    if (selectRoot && selectRoot.alpha > 0.5f && _bands.Count > 0)
+    {
+        var firstBtn = _bands[0].GetComponentInChildren<Button>();
+        if (firstBtn) EventSystem.current?.SetSelectedGameObject(firstBtn.gameObject);
+        if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+    }
+}
+    void OpenTitleFromSelection()
+    {
+        _meta.OpenTitle();
+    }
+
+void ClearSelection()
+{
+    var es = EventSystem.current;
+    if (es && es.currentSelectedGameObject != null)
+        es.SetSelectedGameObject(null);
+}
+
+void WireTitleNavigation()
+{
+    // Vertical: Play ↓ Options ↓ Quit ; wrap Up as you like
+    if (!btnPlay || !btnOptions || !btnQuit) return;
+
+    var nPlay = btnPlay.navigation; nPlay.mode = Navigation.Mode.Explicit;
+    nPlay.selectOnUp   = null;
+    nPlay.selectOnDown = btnOptions;
+    btnPlay.navigation = nPlay;
+
+    var nOpt = btnOptions.navigation; nOpt.mode = Navigation.Mode.Explicit;
+    nOpt.selectOnUp   = btnPlay;
+    nOpt.selectOnDown = btnQuit;
+    btnOptions.navigation = nOpt;
+
+    var nQuit = btnQuit.navigation; nQuit.mode = Navigation.Mode.Explicit;
+    nQuit.selectOnUp   = btnOptions;
+    nQuit.selectOnDown = null;
+    btnQuit.navigation = nQuit;
+}
+
+
 
     void ShowOptionsToast(string msg)
     {

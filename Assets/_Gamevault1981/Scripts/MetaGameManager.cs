@@ -67,7 +67,13 @@ public class MetaGameManager : MonoBehaviour
         BuildGameList();
         ui.Init(this);
         OpenTitle();
+
     }
+    
+    public void ShowInGameMenu(bool on)
+{
+    if (ui) ui.ShowInGameMenu(on);
+}
 
     void BuildGameList()
     {
@@ -210,26 +216,26 @@ public class MetaGameManager : MonoBehaviour
     public void StopMusic()          { PlayMusic(null); }
 
     public void OpenTitle()
-    {
-        StopGame();
-        ui.ShowTitle(true);
-        ui.ShowSelect(false);
-        PlayTitleMusic();
-    }
+{
+    StopGame();
+    ui.ShowInGameMenu(false);   // <— add
+    ui.ShowTitle(true);
+    ui.ShowSelect(false);
+    PlayTitleMusic();
+}
 
-    public void OpenSelection()
-    {
-        StopGame();
+public void OpenSelection()
+{
+    StopGame();
+    ui.ShowInGameMenu(false);   
+    ui.BindSelection(Games);
+    ui.ShowTitle(false);
+    ui.ShowSelect(true);
 
-      ui.BindSelection(Games);
-
-        ui.ShowTitle(false);
-        ui.ShowSelect(true);
-
-        if (selectionMusic) PlaySelectionMusic();
-        else if (titleMusic) PlayTitleMusic();
-        else StopMusic();
-    }
+    if (selectionMusic) PlaySelectionMusic();
+    else if (titleMusic) PlayTitleMusic();
+    else StopMusic();
+}
 
     public void StartGame(GameDef def)
     {

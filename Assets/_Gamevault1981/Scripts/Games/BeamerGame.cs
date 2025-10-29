@@ -263,7 +263,7 @@ public class BeamerGame : GameManager
             RetroDraw.PixelRect(vw/2 - 52, sh/2 - 20, 104, 40, sw, sh, new Color(0,0,0,0.75f));
             RetroDraw.PrintBig  (vw/2 - 36, sh/2 - 4, "GAME OVER", sw, sh, Color.white);
             RetroDraw.PrintSmall(vw/2 - 44, sh/2 - 14, "A: RETRY   Back: MENU", sw, sh, new Color(0.9f,0.9f,1f,1));
-            if (BackPressed()) QuitToMenu();
+ 
         }
 
         DrawCommonHUD(sw, sh);

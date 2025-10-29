@@ -60,7 +60,7 @@ public class PillarPrinceGame : GameManager
         if (!alive)
         {
             if (BtnADown()) Begin();
-            if (BackPressed()) QuitToMenu();
+
             return;
         }
 

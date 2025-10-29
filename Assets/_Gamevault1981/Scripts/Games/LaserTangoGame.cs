@@ -297,7 +297,7 @@ public class LaserTangoGame : GameManager
             RetroDraw.PrintBig  (vw/2 - 38, sh/2 - 4, "BOOM!", sw, sh, Color.white);
             RetroDraw.PrintSmall(vw/2 - 52, sh/2 - 14, "A: RETRY    Back: MENU", sw, sh, new Color(0.9f,0.9f,1f,1));
             if (BtnADown()) Begin();
-            if (BackPressed()) QuitToMenu();
+      
         }
 
         // Shared HUD (score + pause)
