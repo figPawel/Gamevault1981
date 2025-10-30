@@ -540,8 +540,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 543, y: -57.914}
-  m_SizeDelta: {x: 500, y: 88.236}
+  m_AnchoredPosition: {x: 599.593, y: -63.198}
+  m_SizeDelta: {x: 568.8253, y: 98.803}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &4812390919485977511
 CanvasRenderer:
@@ -1071,6 +1071,12 @@ MonoBehaviour:
   statsText: {fileID: 4897361430730442710}
   btnPlay: {fileID: 8905872521559188807}
   unlockCountdownText: {fileID: 536033259907211215}
+  hideWhenLocked:
+  - {fileID: 2240729497409676325}
+  - {fileID: 2240729497409676325}
+  - {fileID: 3098227407178593465}
+  - {fileID: 8782870670836922495}
+  - {fileID: 6284104946526260445}
   labelsFolder: labels
   defaultFocus: {x: 0.5, y: 0.5}
   cropOverrides: []

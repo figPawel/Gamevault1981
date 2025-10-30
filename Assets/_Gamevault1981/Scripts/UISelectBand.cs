@@ -29,6 +29,10 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     [Tooltip("TMP text placed visually where you want the countdown (e.g., over the band).")]
     public TMP_Text unlockCountdownText;
 
+    [Header("Hide When Locked")]
+[Tooltip("Drag anything you want hidden while locked (title/desc/modes/stats/PLAY containers, etc.).")]
+public GameObject[] hideWhenLocked;
+
     [Header("Label loading (StreamingAssets)")]
     [SerializeField] string labelsFolder = "labels";                 // StreamingAssets/labels/<id or title>.(png|jpg|jpeg)
     [SerializeField] Vector2 defaultFocus = new Vector2(0.5f, 0.5f); // crop focus 0..1 (x,y)
@@ -149,10 +153,9 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         }
     }
 
-    void UpdateLockVisuals(bool force)
+  void UpdateLockVisuals(bool force)
 {
-    bool isUnlocked = _meta.IsUnlocked(_def);
-    bool newLocked  = !isUnlocked;
+    bool newLocked = !_meta.IsUnlocked(_def);
 
     if (force || newLocked != _locked)
     {
@@ -161,8 +164,10 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         if (unlockCountdownText)
             unlockCountdownText.gameObject.SetActive(_locked);
 
-        if (descText)                           // NEW: hide description while locked
-            descText.gameObject.SetActive(!_locked);
+        // Only hide what you assigned in the Inspector
+        if (hideWhenLocked != null)
+            for (int i = 0; i < hideWhenLocked.Length; i++)
+                if (hideWhenLocked[i]) hideWhenLocked[i].SetActive(!_locked);
     }
 
     if (_locked && unlockCountdownText)
@@ -179,6 +184,7 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         }
     }
 }
+
 
     static string FormatCountdown(TimeSpan t)
     {
