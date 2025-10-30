@@ -1,3 +1,4 @@
+// === Options.cs — DROP-IN ===
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -30,6 +31,7 @@ public class Options : MonoBehaviour
     // soundtrack toggles
     bool  _playOnSelection, _playOnTitle, _playInGame;
     float _inGameMusicVol;
+    bool  _allowChipInGame; // new
 
     // input
     bool _invertY1, _invertY2;
@@ -48,14 +50,16 @@ public class Options : MonoBehaviour
         _playOnTitle     = PlayerPrefs.GetInt("msk_title", 1) != 0;
         _playInGame      = PlayerPrefs.GetInt("msk_game",  0) != 0;
         _inGameMusicVol  = PlayerPrefs.GetFloat("msk_game_vol", 0.35f);
+        _allowChipInGame = PlayerPrefs.GetInt("chip_ingame", 1) != 0;
 
         _invertY1   = PlayerPrefs.GetInt("invY1", 0) != 0;
         _invertY2   = PlayerPrefs.GetInt("invY2", 0) != 0;
         _mapP1      = PlayerPrefs.GetInt("map_p1", 0);
         _mapP2      = PlayerPrefs.GetInt("map_p2", 1);
 
-        AudioListener.volume = _musicVol;
-        RetroAudio.GlobalSfxVolume = _sfxVol;
+        // Apply initial state
+        MetaGameManager.I?.SetMusicVolumeLinear(_musicVol);
+        MetaGameManager.I?.SetSfxVolumeLinear(_sfxVol);
         if (ui && ui.crtEffectRoot) ui.crtEffectRoot.SetActive(_crtOn);
     }
 
@@ -124,15 +128,31 @@ public class Options : MonoBehaviour
         EnsureDistinctMappings();  // enforce P1 != P2
 
         // AUDIO / VIDEO
-        AddSliderRow("Master Music Volume", () => _musicVol, v => { _musicVol = v; AudioListener.volume = _musicVol; PlayerPrefs.SetFloat("opt_music", _musicVol); });
-        AddSliderRow("Master SFX Volume",   () => _sfxVol,   v => { _sfxVol   = v; RetroAudio.GlobalSfxVolume = _sfxVol; PlayerPrefs.SetFloat("opt_sfx", _sfxVol); });
-        AddToggleRow("CRT Filter",          () => _crtOn, on => { _crtOn = on; if (ui && ui.crtEffectRoot) ui.crtEffectRoot.SetActive(on); PlayerPrefs.SetInt("opt_crt", on?1:0); });
+        AddSliderRow("Master Music Volume", () => _musicVol, v => {
+            _musicVol = v;
+            PlayerPrefs.SetFloat("opt_music", _musicVol);
+            MetaGameManager.I?.SetMusicVolumeLinear(_musicVol);
+        });
+        AddSliderRow("Master SFX Volume",   () => _sfxVol,   v => {
+            _sfxVol = v;
+            PlayerPrefs.SetFloat("opt_sfx", _sfxVol);
+            MetaGameManager.I?.SetSfxVolumeLinear(_sfxVol);
+        });
+        AddToggleRow("CRT Filter",          () => _crtOn, on => {
+            _crtOn = on;
+            if (ui && ui.crtEffectRoot) ui.crtEffectRoot.SetActive(on);
+            PlayerPrefs.SetInt("opt_crt", on?1:0);
+        });
 
         // SOUNDTRACK ROUTING
         AddToggleRow("Play soundtrack on Selection", () => _playOnSelection, on => { _playOnSelection = on; PlayerPrefs.SetInt("msk_sel", on?1:0); });
         AddToggleRow("Play soundtrack on Title",     () => _playOnTitle,     on => { _playOnTitle = on; PlayerPrefs.SetInt("msk_title", on?1:0); });
         AddToggleRow("Play soundtrack during Game",  () => _playInGame,      on => { _playInGame  = on; PlayerPrefs.SetInt("msk_game", on?1:0); });
         AddSliderRow("In-game music volume", () => _inGameMusicVol, v => { _inGameMusicVol = v; PlayerPrefs.SetFloat("msk_game_vol", v); });
+        AddToggleRow("Allow old-school chiptune music in-game", () => _allowChipInGame, on => {
+            _allowChipInGame = on;
+            PlayerPrefs.SetInt("chip_ingame", on ? 1 : 0);
+        });
 
         // INPUT
         AddToggleRow("Invert Y — Player 1", () => _invertY1, on => { _invertY1 = on; PlayerPrefs.SetInt("invY1", on?1:0); });
@@ -300,10 +320,10 @@ public class Options : MonoBehaviour
             return best;
         }
 
- int  Wrap(int i) { int m = i % steps.Length; return m < 0 ? m + steps.Length : m; }
-void SetIdx(int i) { set(steps[Wrap(i)]); }
-void Left()  { SetIdx(IndexOf(get()) - 1); RefreshLast(); }
-void Right() { SetIdx(IndexOf(get()) + 1); RefreshLast(); }
+        int  Wrap(int i) { int m = i % steps.Length; return m < 0 ? m + steps.Length : m; }
+        void SetIdx(int i) { set(steps[Wrap(i)]); }
+        void Left()  { SetIdx(IndexOf(get()) - 1); RefreshLast(); }
+        void Right() { SetIdx(IndexOf(get()) + 1); RefreshLast(); }
         string Value() => $"{Mathf.RoundToInt(Mathf.Clamp01(get()) * 100f)}%";
 
         MakeRow(label, Value, Left, Right);

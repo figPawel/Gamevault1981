@@ -601,7 +601,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 3.6777344, y: -5.631748}
+  m_AnchoredPosition: {x: 3.6777344, y: -5.631775}
   m_SizeDelta: {x: 664.0502, y: 386.13028}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &348020726
@@ -2406,7 +2406,16 @@ MonoBehaviour:
   gameHost: {fileID: 498365544}
   titleMusic: {fileID: 8300000, guid: 005fa31a25872354e81f16a5e90b2e11, type: 3}
   selectionMusic: {fileID: 0}
+  ShowLockedBands: 1
+  AlwaysUnlockedFirstN: 20
+  serverTimeOffsetSeconds: 0
+  mixer: {fileID: 24100000, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
+  mixerMusicGroup: {fileID: 1653838731606186422, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
+  mixerSfxGroup: {fileID: 6751983027299263829, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
+  musicVolumeParam: MusicVolDb
+  sfxVolumeParam: SfxVolDb
   audioBus: {fileID: 0}
+  PreloadTracksOnSelection: 1
 --- !u!1 &1173875224
 GameObject:
   m_ObjectHideFlags: 0
@@ -4334,6 +4343,7 @@ GameObject:
   - component: {fileID: 2057897084}
   - component: {fileID: 2057897085}
   - component: {fileID: 2057897086}
+  - component: {fileID: 2057897087}
   m_Layer: 0
   m_Name: UIManager
   m_TagString: Untagged
@@ -4418,6 +4428,18 @@ MonoBehaviour:
   btnHeaderBack: {fileID: 1821519009}
   optionBandPrefab: {fileID: 7919669846977238603, guid: 9aeebcc6e1aabd841ade3eb7ce3f1fbf, type: 3}
   containerName: OptionsContainer
+--- !u!114 &2057897087
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2057897083}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b34e3649687b9104891b8d4860e18cc0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Leaderboards
 --- !u!1 &2105542601
 GameObject:
   m_ObjectHideFlags: 0

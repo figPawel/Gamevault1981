@@ -1,10 +1,9 @@
 using UnityEngine;
 
-// Quick and tiny retro beep generator that writes directly to an AudioSource.
 [RequireComponent(typeof(AudioSource))]
 public class RetroAudio : MonoBehaviour
 {
-    public static float GlobalSfxVolume = 1f;   // <— added
+    public static float GlobalSfxVolume = 1f;
 
     AudioSource _src;
     const int sampleRate = 44100;
@@ -32,7 +31,7 @@ public class RetroAudio : MonoBehaviour
             if (phase >= 2f) phase -= 2f;
 
             // square wave
-            data[i] = (phase < 1f ? 1f : -1f) * volume * GlobalSfxVolume; // <— multiply by global
+            data[i] = (phase < 1f ? 1f : -1f) * volume * GlobalSfxVolume;
         }
 
         clip.SetData(data, 0);

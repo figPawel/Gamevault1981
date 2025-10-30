@@ -1,3 +1,4 @@
+// === MetaGameManager.cs — DROP-IN ===
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -6,6 +7,7 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Networking;
+using UnityEngine.Audio;
 
 [Serializable] class Catalog { public string timezone; public Entry[] games; }
 [Serializable] class Entry { public string id; public int number; public string title; public string[] modes; public string desc; public string cover; public string unlock_at_utc; }
@@ -52,8 +54,19 @@ public class MetaGameManager : MonoBehaviour
     [Tooltip("Offset (seconds) to add to local UTC. When you wire Supabase server time, set this once at boot.")]
     public double serverTimeOffsetSeconds = 0;
 
+    [Header("Audio Mixer")]
+    public AudioMixer mixer;
+    public AudioMixerGroup mixerMusicGroup;
+    public AudioMixerGroup mixerSfxGroup;
+    [Tooltip("Exposed mixer parameter for music volume in dB.")]
+    public string musicVolumeParam = "MusicVolDb";
+    [Tooltip("Exposed mixer parameter for SFX volume in dB.")]
+    public string sfxVolumeParam = "SfxVolDb";
+
     // --- Audio ---
     AudioSource _music;
+    float _currentBaseMusicVol = 1f; // per-track base, separate from master
+
     public RetroAudio audioBus;
 
     GameManager _current;
@@ -84,12 +97,15 @@ public class MetaGameManager : MonoBehaviour
 
         if (FindObjectOfType<AudioListener>() == null) gameObject.AddComponent<AudioListener>();
 
+        // Music source
         _music = gameObject.AddComponent<AudioSource>();
         _music.playOnAwake = false;
         _music.loop = true;
         _music.spatialBlend = 0f;
-        _music.volume = 0.8f;
+        _music.volume = 1f;
+        if (mixerMusicGroup) _music.outputAudioMixerGroup = mixerMusicGroup;
 
+        // SFX bus (RetroAudio)
         if (!audioBus)
         {
             var busGO = new GameObject("AudioBus");
@@ -97,12 +113,52 @@ public class MetaGameManager : MonoBehaviour
             audioBus = busGO.AddComponent<RetroAudio>();
             var src = busGO.GetComponent<AudioSource>();
             src.playOnAwake = false; src.loop = false; src.spatialBlend = 0f; src.volume = 1f;
+            if (mixerSfxGroup) src.outputAudioMixerGroup = mixerSfxGroup;
         }
+
+        // Apply saved volumes
         RetroAudio.GlobalSfxVolume = PlayerPrefs.GetFloat("opt_sfx", 1.0f);
+        ApplyVolumesFromPrefs();
 
         BuildGameList();
         if (ui) ui.Init(this);
         OpenTitle();
+    }
+
+    static float LinearToDb(float x)
+    {
+        x = Mathf.Clamp(x, 0f, 1f);
+        if (x <= 0.0001f) return -80f; // effectively mute
+        return 20f * Mathf.Log10(x);
+    }
+
+    public void SetMusicVolumeLinear(float linear)
+    {
+        linear = Mathf.Clamp01(linear);
+        PlayerPrefs.SetFloat("opt_music", linear);
+        if (mixer) mixer.SetFloat(musicVolumeParam, LinearToDb(linear));
+        else ApplyMusicVolumeToSource(); // fall back to per-source if no mixer
+    }
+
+    public void SetSfxVolumeLinear(float linear)
+    {
+        linear = Mathf.Clamp01(linear);
+        PlayerPrefs.SetFloat("opt_sfx", linear);
+        RetroAudio.GlobalSfxVolume = linear;
+        if (mixer) mixer.SetFloat(sfxVolumeParam, LinearToDb(linear));
+    }
+
+    public void ApplyVolumesFromPrefs()
+    {
+        SetMusicVolumeLinear(PlayerPrefs.GetFloat("opt_music", 0.8f));
+        SetSfxVolumeLinear(PlayerPrefs.GetFloat("opt_sfx", 1.0f));
+    }
+
+    void ApplyMusicVolumeToSource()
+    {
+        if (_music == null) return;
+        float master = mixer ? 1f : PlayerPrefs.GetFloat("opt_music", 0.8f);
+        _music.volume = Mathf.Clamp01(_currentBaseMusicVol * master);
     }
 
     void BuildGameList()
@@ -182,9 +238,18 @@ public class MetaGameManager : MonoBehaviour
     void PlayMusic(AudioClip clip)
     {
         if (_music == null) return;
-        if (clip == null) { _music.Stop(); _music.clip = null; return; }
+        if (clip == null)
+        {
+            _music.Stop();
+            _music.clip = null;
+            return;
+        }
         if (_music.clip == clip && _music.isPlaying) return;
-        _music.clip = clip; _music.loop = true; _music.volume = PlayerPrefs.GetFloat("opt_music", 0.8f);
+
+        _music.clip = clip;
+        _music.loop = true;
+        _currentBaseMusicVol = 1f; // title/selection base
+        ApplyMusicVolumeToSource();
         _music.Play();
     }
 
@@ -202,8 +267,7 @@ public class MetaGameManager : MonoBehaviour
         bool perGameOnTitle = PlayerPrefs.GetInt("msk_title", 1) != 0;
         if (perGameOnTitle && _lastFocusedDef != null)
         {
-            StartCoroutine(PlayTrackRoutineCached(_lastFocusedDef.title,
-                PlayerPrefs.GetFloat("opt_music", 0.8f), loop: true));
+            StartCoroutine(PlayTrackRoutineCached(_lastFocusedDef.title, 1f, loop: true));
         }
         else
         {
@@ -243,6 +307,11 @@ public class MetaGameManager : MonoBehaviour
         {
             float vol = Mathf.Clamp01(PlayerPrefs.GetFloat("msk_game_vol", 0.35f));
             StartCoroutine(PlayTrackRoutineCached(def.title, vol, loop: true));
+        }
+        else
+        {
+            // ensure title/selection/preview music doesn’t bleed into gameplay
+            StopMusic();
         }
 
         if (def.implType == null)
@@ -364,7 +433,8 @@ public class MetaGameManager : MonoBehaviour
         {
             _music.loop = loop;
             _music.clip = clip;
-            _music.volume = Mathf.Clamp01(volume) * PlayerPrefs.GetFloat("opt_music", 0.8f);
+            _currentBaseMusicVol = Mathf.Clamp01(volume); // base only; master is via mixer param
+            ApplyMusicVolumeToSource();
             _music.Play();
         }
     }
@@ -383,7 +453,15 @@ public class MetaGameManager : MonoBehaviour
     {
         yield return new WaitForSecondsRealtime(PREVIEW_DELAY);
         if (token != _previewToken) yield break;
-        float vol = PlayerPrefs.GetFloat("opt_music", 0.8f);
-        yield return PlayTrackRoutineCached(title, vol, loop: true);
+        yield return PlayTrackRoutineCached(title, 1f, loop: true);
+    }
+
+    // ---------- Chiptune gating ----------
+    // If the player wants the modern soundtrack during gameplay, chiptune music from games should not play.
+    public bool AllowChiptuneNow()
+    {
+        bool allowChip = PlayerPrefs.GetInt("chip_ingame", 1) != 0;   // default ON
+        bool modernInGame = PlayerPrefs.GetInt("msk_game", 0) != 0;   // modern soundtrack preference
+        return allowChip && !modernInGame;
     }
 }

@@ -20,6 +20,9 @@ public abstract class GameManager : MonoBehaviour
     bool _guiBackLatchDown, _guiBackLatchHeld;
     bool _guiALatchDown,    _guiALatchHeld;
 
+    // Games can consult this before playing their own chiptune music.
+    protected bool AllowChiptuneNow => meta ? meta.AllowChiptuneNow() : true;
+
     public virtual void Begin() { }
     public virtual void OnStartMode() { }
     public virtual void StopMode() { Running = false; }
