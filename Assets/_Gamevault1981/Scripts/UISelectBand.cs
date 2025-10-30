@@ -25,6 +25,10 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     [Header("Actions (optional)")]
     public Button btnPlay;                // you can keep a separate PLAY button if you like
 
+    [Header("Unlock overlay (countdown only)")]
+    [Tooltip("TMP text placed visually where you want the countdown (e.g., over the band).")]
+    public TMP_Text unlockCountdownText;
+
     [Header("Label loading (StreamingAssets)")]
     [SerializeField] string labelsFolder = "labels";                 // StreamingAssets/labels/<id or title>.(png|jpg|jpeg)
     [SerializeField] Vector2 defaultFocus = new Vector2(0.5f, 0.5f); // crop focus 0..1 (x,y)
@@ -44,6 +48,11 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     Color _highlight;
     Color _dim;
 
+    // minimal unlock state tracking
+    bool _locked;
+    float _nextTick;
+    string _lastCountdownText = "";
+
     // ---------- Public API ----------
     public void Bind(GameDef def, MetaGameManager meta)
     {
@@ -58,7 +67,7 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         SafeSet(titleText,  def.title);
         SafeSet(descText,   def.desc);
         SafeSet(modesText,  Modes(def.flags));
-        SafeSet(statsText,  "1P best: –   2P best: –");
+        SafeSet(statsText,  BuildStats(def.flags));   // << only change to stats
         SafeSet(numberText, $"#{def.number}");
         SafeSet(cartTitleText, def.title);
 
@@ -94,6 +103,9 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
                                          : (Graphic)bandButton.GetComponent<Image>())
                                          ?? (Graphic)cartridgeImage;
         }
+
+        // initialize countdown visibility without altering layout
+        UpdateLockVisuals(force:true);
     }
 
     // ---------- EventSystem hooks (controller/keyboard navigation) ----------
@@ -123,6 +135,56 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         // If you want the cartridge title to glow a bit on focus:
         if (cartTitleText)
             cartTitleText.color = on ? Color.Lerp(_highlight, Color.white, 0.35f) : new Color(1,1,1,0.85f);
+    }
+
+    // ---------- Minimal unlock countdown (no other UI changes) ----------
+    void Update()
+    {
+        if (_def == null || _meta == null) return;
+
+        if (Time.unscaledTime >= _nextTick)
+        {
+            _nextTick = Time.unscaledTime + 0.5f; // ~2Hz tick
+            UpdateLockVisuals(force:false);
+        }
+    }
+
+    void UpdateLockVisuals(bool force)
+{
+    bool isUnlocked = _meta.IsUnlocked(_def);
+    bool newLocked  = !isUnlocked;
+
+    if (force || newLocked != _locked)
+    {
+        _locked = newLocked;
+
+        if (unlockCountdownText)
+            unlockCountdownText.gameObject.SetActive(_locked);
+
+        if (descText)                           // NEW: hide description while locked
+            descText.gameObject.SetActive(!_locked);
+    }
+
+    if (_locked && unlockCountdownText)
+    {
+        DateTime now = _meta.NowUtc;
+        TimeSpan left = (_def.unlockAtUtc.HasValue ? (_def.unlockAtUtc.Value - now) : TimeSpan.Zero);
+        if (left.TotalSeconds < 0) left = TimeSpan.Zero;
+
+        string txt = FormatCountdown(left);
+        if (!string.Equals(txt, _lastCountdownText))
+        {
+            _lastCountdownText = txt;
+            unlockCountdownText.text = $"Unlocks in {txt}";
+        }
+    }
+}
+
+    static string FormatCountdown(TimeSpan t)
+    {
+        int days = Mathf.FloorToInt((float)t.TotalDays);
+        int hh = t.Hours, mm = t.Minutes, ss = t.Seconds;
+        return $"{days:00}:{hh:00}:{mm:00}:{ss:00}";
     }
 
     // ---------- Label loading & cropping ----------
@@ -230,6 +292,17 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         if (c) m += "2P COOP ";
         if (a) m += "2P ALT ";
         return m.Trim();
+    }
+
+    string BuildStats(GameFlags f)
+    {
+        bool has1P = (f & GameFlags.Solo) != 0;
+        bool has2P = (f & (GameFlags.Versus2P | GameFlags.Coop2P | GameFlags.Alt2P)) != 0;
+
+        if (has1P && has2P) return "1P best: –   2P best: –";
+        if (has1P)          return "1P best: –";
+        if (has2P)          return "2P best: –";
+        return ""; // exotic: no score categories
     }
 
     // Deterministic, nice-ish palette from game number
@@ -350,13 +423,12 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     }
 
     public static Color AccentFor(GameDef def)
-{
-    float hue = ((def.number * 37) % 360) / 360f;
-    var c = Color.HSVToRGB(hue, 0.65f, 0.95f);
-    c.a = 1f;
-    return c;
-}
-
+    {
+        float hue = ((def.number * 37) % 360) / 360f;
+        var c = Color.HSVToRGB(hue, 0.65f, 0.95f);
+        c.a = 1f;
+        return c;
+    }
 
     static void ApplyCoverCropStatic(RawImage img, Texture2D tex, float targetAspect, Vector2 focus01)
     {
