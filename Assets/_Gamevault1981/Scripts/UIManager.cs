@@ -47,12 +47,6 @@ public class UIManager : MonoBehaviour
     public float TopEdgeMargin = 0f;
     public float BottomEdgeMargin = 0f;
 
-    [Header("Optional / Effects")]
-    public GameObject crtEffectRoot;
-
-    [Header("Optional / Small HUD")]
-    public TMP_Text optionsToast;
-
     MetaGameManager _meta;
     readonly List<GameObject> _bands = new List<GameObject>();
 
@@ -73,8 +67,7 @@ public class UIManager : MonoBehaviour
         _sfxVol = PlayerPrefs.GetFloat("opt_sfx", 1.0f);
         AudioListener.volume = _musicVol;
         RetroAudio.GlobalSfxVolume = _sfxVol;
-        if (crtEffectRoot) crtEffectRoot.SetActive(PlayerPrefs.GetInt("opt_crt", 1) != 0);
-        if (optionsToast) optionsToast.gameObject.SetActive(false);
+       
     }
 
     void Start()
@@ -90,14 +83,7 @@ public class UIManager : MonoBehaviour
 
     void Update()
     {
-        // toast fade
-        if (_toastT > 0f && optionsToast)
-        {
-            _toastT -= Time.unscaledDeltaTime;
-            float a = Mathf.Clamp01(Mathf.Min(_toastT, 0.25f) / 0.25f);
-            var c = optionsToast.color; c.a = a; optionsToast.color = c;
-            if (_toastT <= 0f) optionsToast.gameObject.SetActive(false);
-        }
+      
 
         // -------- Unified input routing (Back & Pause) --------
         bool backDown = false, backHeld = false, pauseDown = false;
@@ -463,11 +449,7 @@ public class UIManager : MonoBehaviour
         PlayerPrefs.SetFloat("opt_music", _musicVol);
         PlayerPrefs.SetFloat("opt_sfx", _sfxVol);
 
-        bool crt = !(crtEffectRoot && crtEffectRoot.activeSelf);
-        if (crtEffectRoot) crtEffectRoot.SetActive(crt);
-        PlayerPrefs.SetInt("opt_crt", crt ? 1 : 0);
-
-        ShowOptionsToast($"Music {Mathf.RoundToInt(_musicVol * 100)}%  •  SFX {Mathf.RoundToInt(_sfxVol * 100)}%  •  CRT {(crt ? "ON" : "OFF")}");
+    
     }
 
     bool SelectionActive() =>
@@ -628,12 +610,5 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    void ShowOptionsToast(string msg)
-    {
-        if (!optionsToast) return;
-        optionsToast.text = msg;
-        optionsToast.gameObject.SetActive(true);
-        var c = optionsToast.color; c.a = 1f; optionsToast.color = c;
-        _toastT = 1.25f;
-    }
+
 }
