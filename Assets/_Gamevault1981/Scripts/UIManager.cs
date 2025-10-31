@@ -8,8 +8,8 @@ public class UIManager : MonoBehaviour
 {
     [Header("Title")]
     public CanvasGroup titleRoot;
-    public Button btnPlay;
-    public Button btnOptions;
+    public Button btnGameSelection;
+
     public Button btnQuit;
 
     [Header("Selection")]
@@ -154,9 +154,9 @@ public class UIManager : MonoBehaviour
     {
         _meta = meta;
 
-        if (btnPlay)    btnPlay.onClick.AddListener(_meta.OpenSelection);
+        if (btnGameSelection)    btnGameSelection.onClick.AddListener(_meta.OpenSelection);
         if (btnQuit)    btnQuit.onClick.AddListener(_meta.QuitApp);
-        if (btnOptions) btnOptions.onClick.AddListener(CycleBasicOptions);
+    
         if (btnBackFromSelect) btnBackFromSelect.onClick.AddListener(_meta.OpenTitle);
 
         ShowTitle(false);
@@ -380,9 +380,7 @@ public class UIManager : MonoBehaviour
             if (band && band.bandButton) bandButtons.Add(band.bandButton);
         }
 
-        Button topMid = btnBackFromSelect ? btnBackFromSelect
-             : (btnTopLeaderboards ? btnTopLeaderboards
-             : (btnTopOptions ? btnTopOptions : btnOptions));
+Button topMid = btnBackFromSelect ?? btnTopLeaderboards ?? btnTopOptions;
 
         for (int i = 0; i < bandButtons.Count; i++)
         {
@@ -424,13 +422,6 @@ public class UIManager : MonoBehaviour
             n.selectOnUp   = btnTopLeaderboards ? btnTopLeaderboards : btnTopOptions;
             n.selectOnDown = firstBand;
             btnBackFromSelect.navigation = n;
-        }
-
-        if (!btnTopOptions && !btnBackFromSelect && btnOptions && firstBand)
-        {
-            var n = btnOptions.navigation; n.mode = Navigation.Mode.Explicit;
-            n.selectOnDown = firstBand;
-            btnOptions.navigation = n;
         }
     }
 
@@ -531,8 +522,7 @@ public class UIManager : MonoBehaviour
     void WireTitleNavigation()
     {
         var list = new List<Button>();
-        if (btnPlay)  list.Add(btnPlay);
-        if (btnOptions) list.Add(btnOptions);
+        if (btnGameSelection)  list.Add(btnGameSelection);
         if (btnQuit)  list.Add(btnQuit);
 
         if (list.Count == 0) return;
@@ -549,8 +539,8 @@ public class UIManager : MonoBehaviour
 
     Button FirstTitleButton()
     {
-        if (btnPlay) return btnPlay;
-        if (btnOptions) return btnOptions;
+        if (btnGameSelection) return btnGameSelection;
+
         if (btnQuit) return btnQuit;
         return null;
     }
@@ -577,7 +567,7 @@ public class UIManager : MonoBehaviour
             if (!es.currentSelectedGameObject || !es.currentSelectedGameObject.activeInHierarchy ||
                 !es.currentSelectedGameObject.transform.IsChildOf(titleRoot.transform))
             {
-                if (btnPlay) es.SetSelectedGameObject(btnPlay.gameObject);
+                if (btnGameSelection) es.SetSelectedGameObject(btnGameSelection.gameObject);
             }
             return;
         }

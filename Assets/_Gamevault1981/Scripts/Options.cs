@@ -60,7 +60,7 @@ public class Options : MonoBehaviour
         // Apply initial state
         MetaGameManager.I?.SetMusicVolumeLinear(_musicVol);
         MetaGameManager.I?.SetSfxVolumeLinear(_sfxVol);
-        if (ui && ui.crtEffectRoot) ui.crtEffectRoot.SetActive(_crtOn);
+
     }
 
     void Start()
@@ -138,12 +138,7 @@ public class Options : MonoBehaviour
             PlayerPrefs.SetFloat("opt_sfx", _sfxVol);
             MetaGameManager.I?.SetSfxVolumeLinear(_sfxVol);
         });
-        AddToggleRow("CRT Filter",          () => _crtOn, on => {
-            _crtOn = on;
-            if (ui && ui.crtEffectRoot) ui.crtEffectRoot.SetActive(on);
-            PlayerPrefs.SetInt("opt_crt", on?1:0);
-        });
-
+   
         // SOUNDTRACK ROUTING
         AddToggleRow("Play soundtrack on Selection", () => _playOnSelection, on => { _playOnSelection = on; PlayerPrefs.SetInt("msk_sel", on?1:0); });
         AddToggleRow("Play soundtrack on Title",     () => _playOnTitle,     on => { _playOnTitle = on; PlayerPrefs.SetInt("msk_title", on?1:0); });

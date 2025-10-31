@@ -95,7 +95,7 @@ public class MetaGameManager : MonoBehaviour
         if (!ui) ui = FindObjectOfType<UIManager>(true);
         if (!gameHost) gameHost = new GameObject("GameHost").transform;
 
-        if (FindObjectOfType<AudioListener>() == null) gameObject.AddComponent<AudioListener>();
+        if (FindFirstObjectByType<AudioListener>() == null) gameObject.AddComponent<AudioListener>();
 
         // Music source
         _music = gameObject.AddComponent<AudioSource>();
@@ -182,15 +182,15 @@ public class MetaGameManager : MonoBehaviour
             return sb.ToString();
         }
 
-        // Map ids to impl types (sample)
+
         System.Type beamer       = typeof(BeamerGame);
         System.Type pillarprince = typeof(PillarPrinceGame);
-        System.Type lasertango   = typeof(LaserTangoGame);
+       
 
         var implMap = new Dictionary<string, System.Type>
         {
-            { "beamer", beamer }, { "pillarprince", pillarprince }, { "lasertango", lasertango },
-            // … (rest of your map; null means “not implemented yet”)
+            { "beamer", beamer }, { "pillarprince", pillarprince }, 
+      
         };
 
         foreach (var e in cat.games)
@@ -274,7 +274,7 @@ public class MetaGameManager : MonoBehaviour
             PlayTitleMusic();
         }
 
-        if (ui && ui.btnPlay) EventSystem.current?.SetSelectedGameObject(ui.btnPlay.gameObject);
+        if (ui && ui.btnGameSelection) EventSystem.current?.SetSelectedGameObject(ui.btnGameSelection.gameObject);
     }
 
     public void OpenSelection()
