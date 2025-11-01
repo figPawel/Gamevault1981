@@ -235,29 +235,30 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    public void ShowSelect(bool on)
+   public void ShowSelect(bool on)
+{
+    if (!selectRoot) return;
+    if (on) ClearSelection();
+    selectRoot.alpha = on ? 1 : 0;
+    selectRoot.interactable = on;
+    selectRoot.blocksRaycasts = on;
+
+    if (on)
     {
-        if (!selectRoot) return;
-        if (on) ClearSelection();
-        selectRoot.alpha = on ? 1 : 0;
-        selectRoot.interactable = on;
-        selectRoot.blocksRaycasts = on;
+        // Focus the header (Options -> Leaderboards -> Back), not a band
+        GameObject header =
+            (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
+            (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
+            (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
 
-        if (on)
-        {
-            if (_bands.Count > 0)
-            {
-                var firstBtn = _bands[0].GetComponentInChildren<Button>();
-                if (firstBtn) EventSystem.current?.SetSelectedGameObject(firstBtn.gameObject);
-                if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
-                ScrollToBand(_bands[0].GetComponent<UISelectBand>()?.Rect);
-            }
+        if (header) EventSystem.current?.SetSelectedGameObject(header);
+        if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
 
-            // ensure main score text shows current value if no payout running
-            if (!_mainCounting && mainScoreText && _meta != null)
-                mainScoreText.text = _meta.MainScore.ToString("N0");
-        }
+        // ensure main score text shows current value if no payout running
+        if (!_mainCounting && mainScoreText && _meta != null)
+            mainScoreText.text = _meta.MainScore.ToString("N0");
     }
+}
 
     public void ShowInGameMenu(bool on)
     {
@@ -305,9 +306,13 @@ public class UIManager : MonoBehaviour
 
         if (_bands.Count > 0)
         {
-            var firstBtn = _bands[0].GetComponentInChildren<Button>();
-            if (firstBtn) EventSystem.current?.SetSelectedGameObject(firstBtn.gameObject);
-            if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+     GameObject header =
+    (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
+    (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
+    (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
+
+if (header) EventSystem.current?.SetSelectedGameObject(header);
+if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
         }
     }
 
@@ -554,12 +559,17 @@ public class UIManager : MonoBehaviour
         ShowInGameMenu(false);
         _meta.QuitToSelection();
 
-        if (selectRoot && selectRoot.alpha > 0.5f && _bands.Count > 0)
-        {
-            var firstBtn = _bands[0].GetComponentInChildren<Button>();
-            if (firstBtn) EventSystem.current?.SetSelectedGameObject(firstBtn.gameObject);
-            if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
-        }
+       if (selectRoot && selectRoot.alpha > 0.5f)
+{
+    // Prefer top header instead of the first band
+    GameObject header =
+        (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
+        (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
+        (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
+
+    if (header) EventSystem.current?.SetSelectedGameObject(header);
+    if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+}
     }
 
     void OpenTitleFromSelection() => _meta.OpenTitle();

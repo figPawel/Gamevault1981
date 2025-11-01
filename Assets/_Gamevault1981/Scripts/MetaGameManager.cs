@@ -9,10 +9,14 @@ using UnityEngine.EventSystems;
 using UnityEngine.Networking;
 using UnityEngine.Audio;
 
+
+
 [Serializable] class Catalog { public string timezone; public Entry[] games; }
 [Serializable] class Entry { public string id; public int number; public string title; public string[] modes; public string desc; public string cover; public string unlock_at_utc; }
 
 [Flags] public enum GameFlags { Solo = 1, Versus2P = 2, Coop2P = 4, Alt2P = 8 }
+
+
 
 public class GameDef
 {
@@ -31,6 +35,17 @@ public class GameDef
 
 public class MetaGameManager : MonoBehaviour
 {
+
+    [ContextMenu("Reset Main Score (testing)")]
+public void ResetMainScoreForTesting()
+{
+    _mainScore = 0;
+    PlayerPrefs.DeleteKey("main_score");
+    PlayerPrefs.Save();
+
+    // If Selection is visible, show the zero immediately.
+    ui?.BeginMainScoreCount(0, 0);
+}
     public static MetaGameManager I;
 
     [Header("Scene Hooks")]
@@ -42,7 +57,7 @@ public class MetaGameManager : MonoBehaviour
 
     [Header("Music (fallbacks)")]
     public AudioClip titleMusic;
-    public AudioClip selectionMusic;
+
 
     [Header("Unlocks")]
     [Tooltip("If ON, locked games appear as disabled bands with a live countdown. If OFF, locked games are hidden from the list.")]
@@ -260,62 +275,65 @@ public class MetaGameManager : MonoBehaviour
     }
 
     public void PlayTitleMusic()     { PlayMusic(titleMusic); }
-    public void PlaySelectionMusic() { PlayMusic(selectionMusic); }
+
     public void StopMusic()          { PlayMusic(null); }
 
-    public void OpenTitle()
+public void OpenTitle()
+{
+    StopGame();
+    ui?.ShowInGameMenu(false);
+    ui?.ShowTitle(true);
+    ui?.ShowSelect(false);
+
+    // Always use title music on the Title screen
+    PlayTitleMusic();
+
+    if (ui && ui.btnGameSelection)
+        EventSystem.current?.SetSelectedGameObject(ui.btnGameSelection.gameObject);
+}
+
+   public void OpenSelection()
+{
+    StopGame();
+    ui?.ShowInGameMenu(false);
+    ui?.BindSelection(Games);
+    ui?.ShowTitle(false);
+
+    // --- Cash out the session into main score (but we'll delay the visual count-up)
+    int from = _mainScore;
+    bool hadSession = _sessionScore > 0;
+    if (hadSession)
     {
-        StopGame();
-        ui?.ShowInGameMenu(false);
-        ui?.ShowTitle(true);
-        ui?.ShowSelect(false);
-
-        bool perGameOnTitle = PlayerPrefs.GetInt("msk_title", 1) != 0;
-        if (perGameOnTitle && _lastFocusedDef != null)
-        {
-            StartCoroutine(PlayTrackRoutineCached(_lastFocusedDef.title, 1f, loop: true));
-        }
-        else
-        {
-            PlayTitleMusic();
-        }
-
-        if (ui && ui.btnGameSelection) EventSystem.current?.SetSelectedGameObject(ui.btnGameSelection.gameObject);
+        _mainScore += _sessionScore;
+        _sessionScore = 0;
+        PlayerPrefs.SetInt("main_score", _mainScore);
+        PlayerPrefs.Save();
     }
 
-    public void OpenSelection()
+    ui?.ShowSelect(true);
+    FocusSelectionHeader();                 // << force header focus + top of list
+    ui?.RefreshBandStats();
+
+    // Before starting the count-up, make sure the player briefly sees the header/top.
+    // Also ensure the text shows 'from' until the count starts (prevents a flash of the final total).
+    if (hadSession && ui && ui.mainScoreText)
+        ui.mainScoreText.text = from.ToString("N0");
+
+    StartCoroutine(BeginMainScoreCountAfterDelay(from, _mainScore, hadSession ? 0.35f : 0f));
+
+    // --- Music logic unchanged below ---
+    bool playPerGame = PlayerPrefs.GetInt("msk_sel", 1) != 0;
+ if (!playPerGame)
+{
+    if (titleMusic) PlayTitleMusic();
+    else            StopMusic();
+}
+    if (PreloadTracksOnSelection)
     {
-        StopGame();
-        ui?.ShowInGameMenu(false);
-        ui?.BindSelection(Games);
-        ui?.ShowTitle(false);
-
-        // --- Cash out the session into main score, then animate count-up on Selection
-        int from = _mainScore;
-        if (_sessionScore > 0)
-        {
-            _mainScore += _sessionScore;
-            _sessionScore = 0;
-            PlayerPrefs.SetInt("main_score", _mainScore);
-            PlayerPrefs.Save();
-        }
-
-        ui?.ShowSelect(true);
-        ui?.RefreshBandStats();                // update highs on already-built bands
-        ui?.BeginMainScoreCount(from, _mainScore); // animate count-up under the logo
-
-        bool playPerGame = PlayerPrefs.GetInt("msk_sel", 1) != 0;
-        if (playPerGame) StopMusic();
-        else if (selectionMusic) PlaySelectionMusic();
-        else if (titleMusic) PlayTitleMusic();
-        else StopMusic();
-
-        if (PreloadTracksOnSelection)
-        {
-            if (_prewarmCoro != null) StopCoroutine(_prewarmCoro);
-            _prewarmCoro = StartCoroutine(PrewarmAllTracksRoutine());
-        }
+        if (_prewarmCoro != null) StopCoroutine(_prewarmCoro);
+        _prewarmCoro = StartCoroutine(PrewarmAllTracksRoutine());
     }
+}
 
     public void StartGame(GameDef def, GameMode? autoMode = null)
     {
@@ -509,4 +527,25 @@ public class MetaGameManager : MonoBehaviour
         }
         PlayerPrefs.Save();
     }
+
+    void FocusSelectionHeader()
+{
+    if (ui == null) return;
+
+    var es = UnityEngine.EventSystems.EventSystem.current;
+    GameObject header =
+        (ui.btnTopOptions      ? ui.btnTopOptions.gameObject      : null) ??
+        (ui.btnTopLeaderboards ? ui.btnTopLeaderboards.gameObject : null) ??
+        (ui.btnBackFromSelect  ? ui.btnBackFromSelect.gameObject  : null);
+
+    if (header && es != null) es.SetSelectedGameObject(header);
+    if (ui.selectScroll) ui.selectScroll.verticalNormalizedPosition = 1f;
+}
+
+// Delay is only used when there was a session payout so the top UI is visible first.
+System.Collections.IEnumerator BeginMainScoreCountAfterDelay(int from, int to, float delay)
+{
+    if (delay > 0f) yield return new WaitForSecondsRealtime(delay);
+    ui?.BeginMainScoreCount(from, to);
+}
 }
