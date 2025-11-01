@@ -1,4 +1,3 @@
-// GameManager.cs — FULL FILE (now reads input via InputManager)
 using UnityEngine;
 
 public enum GameMode { Solo = 0, Versus2P = 1, Coop2P = 2, Alt2P = 3 }
@@ -12,9 +11,10 @@ public abstract class GameManager : MonoBehaviour
     public int ScoreP1, ScoreP2;
     public bool Running { get; protected set; }
 
+    // Pause quit confirmation (kept)
     bool _quitConfirmArmed = false;
     float _quitConfirmTimer = 0f;
-    const float QuitConfirmWindow = 1.25f;
+    const float QuitConfirmWindow = 10f;
 
     protected bool Paused;
     bool _gameOver;
@@ -36,18 +36,18 @@ public abstract class GameManager : MonoBehaviour
         OnStartMode();
     }
 
-public virtual void QuitToMenu()
-{
-    if (meta)
-        meta.ReportRun(Def, Mode, ScoreP1, ScoreP2);
+    public virtual void QuitToMenu()
+    {
+        if (meta)
+            meta.ReportRun(Def, Mode, ScoreP1, ScoreP2);
 
-    Running = false;
-    Paused  = false;
-    _gameOver = false;
+        Running = false;
+        Paused = false;
+        _gameOver = false;
 
-
-    meta?.ui?.BindInGameMenu(this);
-}
+        // Return to selection & re-enable UI
+        meta?.QuitToSelection();
+    }
 
     protected void GameOverNow()
     {
@@ -79,33 +79,32 @@ public virtual void QuitToMenu()
     }
 
     // --------------- Pause/GameOver handlers ---------------
-   protected bool HandleGameOver()
-{
-    if (!Running) return true;
-    if (!_gameOver) return false;
-
-    _pauseCooldown = Mathf.Max(0f, _pauseCooldown - Time.unscaledDeltaTime);
-    if (_pauseCooldown > 0f) return true;
-
-    // NEW: allow Back to quit from GAME OVER
-    if (BackPressedUI())
+    protected bool HandleGameOver()
     {
-        QuitToMenu();
+        if (!Running) return true;
+        if (!_gameOver) return false;
+
+        _pauseCooldown = Mathf.Max(0f, _pauseCooldown - Time.unscaledDeltaTime);
+        if (_pauseCooldown > 0f) return true;
+
+        // Back quits from GAME OVER
+        if (BackPressedUI())
+        {
+            QuitToMenu();
+            return true;
+        }
+
+        // Fire to restart
+        if (BtnADown())
+        {
+            _gameOver = false;
+            Paused = false;
+            _quitConfirmArmed = false;
+            _pauseCooldown = 1.0f;
+            OnStartMode();
+        }
         return true;
     }
-
-    // Existing: Fire to continue
-    if (BtnADown())
-    {
-        _gameOver = false;
-        Paused = false;
-        _quitConfirmArmed = false;
-        _pauseCooldown = 1.0f;
-        OnStartMode();
-    }
-    return true;
-}
-
 
     protected bool HandlePause()
     {
@@ -129,6 +128,7 @@ public virtual void QuitToMenu()
 
         if (!Paused) return false;
 
+        // Fire resumes
         if (BtnADown())
         {
             Paused = false;
@@ -137,6 +137,7 @@ public virtual void QuitToMenu()
             return true;
         }
 
+        // Back requires confirm while paused (visual shown in DrawCommonHUD)
         if (BackPressedUI())
         {
             if (!_quitConfirmArmed)
@@ -176,9 +177,31 @@ public virtual void QuitToMenu()
         if (Paused)
         {
             int titleW = "PAUSED".Length * BIG_W;
-            int hintW = HINT.Length * SMALL_W;
             RetroDraw.PrintBig(cx - titleW / 2, cy - 4, "PAUSED", sw, sh, new Color(1f, 1f, 0.8f, 1));
-            RetroDraw.PrintSmall(cx - hintW / 2, cy - 16, HINT, sw, sh, new Color(0.85f, 0.9f, 1f, 1));
+
+            // If Back was pressed once, show blinking confirmation with countdown
+            if (_quitConfirmArmed)
+            {
+                float t = Mathf.Clamp01(_quitConfirmTimer / QuitConfirmWindow);
+                // Blink alpha while counting down
+                float a = 0.6f + 0.4f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 12f));
+                var col = new Color(1f, 0.6f, 0.6f, a);
+
+                string msg = "PRESS BACK AGAIN TO QUIT";
+                int w = msg.Length * SMALL_W;
+                RetroDraw.PrintSmall(cx - w / 2, cy - 24, msg, sw, sh, col);
+
+                // Optional tiny countdown indicator under it
+                string secs = $"{_quitConfirmTimer:0.0}s";
+                int w2 = secs.Length * SMALL_W;
+                RetroDraw.PrintSmall(cx - w2 / 2, cy - 32, secs, sw, sh, new Color(1f, 0.75f, 0.75f, a));
+            }
+            else
+            {
+                // Normal hint when not in confirm mode
+                int hintW = HINT.Length * SMALL_W;
+                RetroDraw.PrintSmall(cx - hintW / 2, cy - 16, HINT, sw, sh, new Color(0.85f, 0.9f, 1f, 1));
+            }
         }
     }
 }

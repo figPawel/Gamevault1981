@@ -69,8 +69,7 @@ public class UIManager : MonoBehaviour
     float _musicVol = 0.8f;
     float _sfxVol   = 1.0f;
 
-    float _backHold = 0f; // still used on selection to quick-quit to bands (header)
-    const float BackHoldToQuit = 0.35f;
+
 
     RectTransform _spacerTop, _spacerBottom;
     bool _builtList = false;
@@ -178,16 +177,10 @@ public class UIManager : MonoBehaviour
         }
         StickyFocusGuard();
 
-        if (SelectionActive())
-        {
-            if (backHeld) _backHold += Time.unscaledDeltaTime; else _backHold = 0f;
-            if (_backHold >= BackHoldToQuit)
-            {
-                _backHold = 0f;
-                QuitToBandsNow();
-            }
-            else if (backDown) HandleBackSinglePress();
-        }
+       if (SelectionActive())
+{
+    if (backDown) HandleBackSinglePress();
+}
 
         if (PlayingActive())
         {
@@ -244,6 +237,7 @@ public class UIManager : MonoBehaviour
             var first = FirstTitleButton();
             if (first) EventSystem.current?.SetSelectedGameObject(first.gameObject);
         }
+        
     }
 
     public void ShowSelect(bool on)
