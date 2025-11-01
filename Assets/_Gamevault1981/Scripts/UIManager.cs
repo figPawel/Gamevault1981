@@ -1,4 +1,5 @@
-// UIManager.cs — DROP-IN (banner placement + mouse wheel scrolling fix)
+// UIManager.cs — FULL FILE (now uses InputManager & disables Back in gameplay and in-game menu)
+// Note: Back during gameplay DOES NOTHING now. Use Pause to open/close the in-game menu.
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -13,18 +14,27 @@ public class UIManager : MonoBehaviour
     public Button btnGameSelection;
     public Button btnQuit;
 
+    [Header("Selection: New-Unlocks Banner (Scene-placed)")]
+    public CanvasGroup newUnlocksBanner;
+    public TMP_Text    newUnlocksBannerText;
+
     [Header("Selection")]
     public CanvasGroup selectRoot;
-    public RectTransform listRoot;          // Content
+    public RectTransform listRoot;
     public GameObject bandPrefab;
-    public GameObject unlockBannerPrefab;   // assign slim prefab with one TMP
+    public GameObject unlockBannerPrefab;
     public Button btnBackFromSelect;
     public Button btnTopOptions;
     public Button btnTopLeaderboards;
     public ScrollRect selectScroll;
     public RectTransform selectViewport;
+    public RectTransform bannerInsertAfter;
 
-    [Tooltip("Pixels of breathing room when centering a selected band.")]
+    [Header("Banner visual")]
+    public float bannerRainbowSpeed = 0.35f;
+    public float bannerRainbowSpread = 0.12f;
+
+    [Header("Viewport pad")]
     public float Viewportpad = 6.0f;
 
     [Header("In-Game Menu")]
@@ -59,7 +69,7 @@ public class UIManager : MonoBehaviour
     float _musicVol = 0.8f;
     float _sfxVol   = 1.0f;
 
-    float _backHold = 0f;
+    float _backHold = 0f; // still used on selection to quick-quit to bands (header)
     const float BackHoldToQuit = 0.35f;
 
     RectTransform _spacerTop, _spacerBottom;
@@ -121,17 +131,21 @@ public class UIManager : MonoBehaviour
             }
         }
 
-        // banner pulse
+        // banner pulse + rainbow
         if (_bannerGO && _bannerGO.activeInHierarchy)
         {
             _bannerPulseT += Time.unscaledDeltaTime * 2.6f;
             float s = 1f + 0.04f * Mathf.Sin(_bannerPulseT * 1.9f);
             float a = 0.85f + 0.15f * Mathf.Sin(_bannerPulseT);
             _bannerGO.transform.localScale = new Vector3(s, s, 1f);
-            if (_bannerTxt) { var c = _bannerTxt.color; c.a = a; _bannerTxt.color = c; }
+            if (_bannerTxt)
+            {
+                var c = _bannerTxt.color; c.a = a; _bannerTxt.color = c;
+                AnimateRainbowTMP(_bannerTxt, bannerRainbowSpeed, bannerRainbowSpread);
+            }
         }
 
-        // --- mouse wheel scrolling works immediately when over viewport ---
+        // mouse wheel scrolling works immediately when over viewport
         if (SelectionActive() && selectScroll && selectViewport && Mouse.current != null)
         {
             float wheel = Mouse.current.scroll.ReadValue().y;
@@ -140,67 +154,19 @@ public class UIManager : MonoBehaviour
                 Vector2 sp = Mouse.current.position.ReadValue();
                 if (RectTransformUtility.RectangleContainsScreenPoint(selectViewport, sp, null))
                 {
-                    // Normalize: positive wheel = scroll up
-                    float sens = 0.0016f; // tweak if needed
+                    float sens = 0.0016f;
                     float v = Mathf.Clamp01(selectScroll.verticalNormalizedPosition + wheel * sens);
                     selectScroll.verticalNormalizedPosition = v;
                 }
             }
         }
 
-        // unified input
-        bool backDown = false, backHeld = false, pauseDown = false;
+        // unified input via InputManager
+        bool backDown = InputManager.I && InputManager.I.UIBackDown();
+        bool backHeld = InputManager.I && InputManager.I.UIBackHeld();
+        bool pauseDown = InputManager.I && InputManager.I.UIPauseDown();
 
-        var gp = Gamepad.current;
-        if (gp != null)
-        {
-            if (gp.buttonEast.wasPressedThisFrame) backDown = true;
-            if (gp.buttonEast.isPressed) backHeld = true;
-            if (gp.startButton.wasPressedThisFrame) pauseDown = true;
-        }
-
-        var kb = Keyboard.current;
-        if (kb != null)
-        {
-            if (kb.backspaceKey.wasPressedThisFrame) backDown = true;
-            if (kb.backspaceKey.isPressed) backHeld = true;
-            if (kb.escapeKey.wasPressedThisFrame) pauseDown = true;
-        }
-
-        var ms = Mouse.current;
-        if (ms != null)
-        {
-            if (ms.rightButton.wasPressedThisFrame) backDown = true;
-            if (ms.rightButton.isPressed) backHeld = true;
-        }
-
-        if (backHeld) _backHold += Time.unscaledDeltaTime;
-        else _backHold = 0f;
-
-        if (_backHold >= BackHoldToQuit)
-        {
-            _backHold = 0f;
-            QuitToBandsNow();
-        }
-        else
-        {
-            if (backDown) HandleBackSinglePress();
-            if (pauseDown) HandlePauseToggle();
-        }
-
-        // viewport guard
-        if (selectRoot && selectRoot.interactable && selectScroll)
-        {
-            var es0 = EventSystem.current;
-            var sel0 = es0 ? es0.currentSelectedGameObject : null;
-            if (sel0 &&
-                ((btnTopLeaderboards && sel0 == btnTopLeaderboards.gameObject) ||
-                 (btnTopOptions && sel0 == btnTopOptions.gameObject) ||
-                 (btnBackFromSelect && sel0 == btnBackFromSelect.gameObject)))
-            {
-                selectScroll.verticalNormalizedPosition = 1f;
-            }
-        }
+        // We DO NOT react to Back during gameplay or in-game menu anymore.
         if (TitleActive())
         {
             var es1 = EventSystem.current;
@@ -211,6 +177,26 @@ public class UIManager : MonoBehaviour
             }
         }
         StickyFocusGuard();
+
+        if (SelectionActive())
+        {
+            if (backHeld) _backHold += Time.unscaledDeltaTime; else _backHold = 0f;
+            if (_backHold >= BackHoldToQuit)
+            {
+                _backHold = 0f;
+                QuitToBandsNow();
+            }
+            else if (backDown) HandleBackSinglePress();
+        }
+
+        if (PlayingActive())
+        {
+            if (pauseDown) HandlePauseToggle(); // Pause opens menu
+        }
+        else if (InGameMenuActive())
+        {
+            if (pauseDown) HandlePauseToggle(); // Pause closes menu
+        }
 
         // focus beep
         var es = EventSystem.current;
@@ -380,26 +366,42 @@ public class UIManager : MonoBehaviour
     // ---------- New-unlocks banner ----------
     public void ShowNewUnlocksBanner(int count)
     {
+        if (newUnlocksBanner)
+        {
+            if (newUnlocksBannerText)
+                newUnlocksBannerText.text = $"{count} NEW GAME{(count == 1 ? "" : "S")} UNLOCKED!";
+
+            newUnlocksBanner.gameObject.SetActive(true);
+            newUnlocksBanner.alpha = 1f;
+
+            _bannerGO   = newUnlocksBanner.gameObject;
+            _bannerTxt  = newUnlocksBannerText;
+            _bannerPulseT = 0f;
+            return;
+        }
+
         if (!unlockBannerPrefab || !listRoot) return;
         HideNewUnlocksBanner();
-
         _bannerGO = Instantiate(unlockBannerPrefab, listRoot);
         _bannerTxt = _bannerGO.GetComponentInChildren<TMP_Text>(true);
-        if (_bannerTxt) _bannerTxt.text = $"NEW GAMES UNLOCKED!";
+        if (_bannerTxt) _bannerTxt.text = $"{count} NEW GAME{(count == 1 ? "" : "S")} UNLOCKED!";
         _bannerPulseT = 0f;
-
-        // Place just BELOW the header group (logo/score/buttons)
-        var headerGroup = btnBackFromSelect ? btnBackFromSelect.transform.parent as RectTransform : null;
-        if (headerGroup && headerGroup.parent == listRoot)
-            _bannerGO.transform.SetSiblingIndex(headerGroup.GetSiblingIndex() + 1);
-        else
-            _bannerGO.transform.SetSiblingIndex(1);
+        _bannerGO.transform.SetAsFirstSibling();
     }
 
     public void HideNewUnlocksBanner()
     {
-        if (_bannerGO) Destroy(_bannerGO);
-        _bannerGO = null; _bannerTxt = null; _bannerPulseT = 0f;
+        if (newUnlocksBanner)
+        {
+            newUnlocksBanner.alpha = 0f;
+            newUnlocksBanner.gameObject.SetActive(false);
+        }
+        if (_bannerGO && (!newUnlocksBanner || _bannerGO != newUnlocksBanner.gameObject))
+            Destroy(_bannerGO);
+
+        _bannerGO = null;
+        _bannerTxt = null;
+        _bannerPulseT = 0f;
     }
 
     // ---------- In-Game Menu wiring ----------
@@ -550,26 +552,14 @@ public class UIManager : MonoBehaviour
     {
         if (TitleActive()) return;
 
-        if (PlayingActive())
-        {
-            _meta.StopGame();
-            ShowInGameMenu(true);
-            if (btnInGameSolo)
-                EventSystem.current?.SetSelectedGameObject(btnInGameSolo.gameObject);
-            return;
-        }
-
-        if (InGameMenuActive())
-        {
-            ShowInGameMenu(false);
-            return;
-        }
-
         if (SelectionActive())
         {
             OpenTitleFromSelection();
             return;
         }
+
+        // During gameplay: do nothing (no accidental quit)
+        // In in-game menu: do nothing (Back is disabled here)
     }
 
     void HandlePauseToggle()
@@ -709,5 +699,32 @@ public class UIManager : MonoBehaviour
             var band = _bands[i] ? _bands[i].GetComponent<UISelectBand>() : null;
             if (band) band.RefreshStats();
         }
+    }
+
+    // ---------- Helpers ----------
+    static void AnimateRainbowTMP(TMP_Text t, float speed, float spread)
+    {
+        if (!t || t.textInfo == null) return;
+        t.ForceMeshUpdate();
+        var ti = t.textInfo;
+        float baseHue = Mathf.Repeat(Time.unscaledTime * Mathf.Max(0.01f, speed), 1f);
+
+        for (int i = 0; i < ti.characterCount; i++)
+        {
+            var ch = ti.characterInfo[i];
+            if (!ch.isVisible) continue;
+
+            float h = Mathf.Repeat(baseHue + i * Mathf.Max(0.001f, spread), 1f);
+            Color col = Color.HSVToRGB(h, 1f, 1f);
+            var meshInfo = ti.meshInfo[ch.materialReferenceIndex];
+            int vi = ch.vertexIndex;
+            if (meshInfo.colors32 == null || meshInfo.colors32.Length == 0) continue;
+            meshInfo.colors32[vi + 0] = col;
+            meshInfo.colors32[vi + 1] = col;
+            meshInfo.colors32[vi + 2] = col;
+            meshInfo.colors32[vi + 3] = col;
+            ti.meshInfo[ch.materialReferenceIndex].colors32 = meshInfo.colors32;
+        }
+        t.UpdateVertexData(TMP_VertexDataUpdateFlags.Colors32);
     }
 }

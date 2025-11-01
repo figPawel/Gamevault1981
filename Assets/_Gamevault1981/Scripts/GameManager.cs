@@ -1,8 +1,5 @@
-// GameManager.cs — FULL FILE
-// Only change relevant here is: Start/Quit flow is unchanged; MetaGameManager handles "played" flag and unlock logic.
-// Replaces your current GameManager.cs. :contentReference[oaicite:3]{index=3}
+// GameManager.cs — FULL FILE (now reads input via InputManager)
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 public enum GameMode { Solo = 0, Versus2P = 1, Coop2P = 2, Alt2P = 3 }
 
@@ -21,7 +18,6 @@ public abstract class GameManager : MonoBehaviour
 
     protected bool Paused;
     bool _gameOver;
-
     float _pauseCooldown;
 
     public virtual void Begin() { }
@@ -40,15 +36,18 @@ public abstract class GameManager : MonoBehaviour
         OnStartMode();
     }
 
-    public virtual void QuitToMenu()
-    {
-        if (meta)
-            meta.ReportRun(Def, Mode, ScoreP1, ScoreP2);
+public virtual void QuitToMenu()
+{
+    if (meta)
+        meta.ReportRun(Def, Mode, ScoreP1, ScoreP2);
 
-        Running = false;
-        Paused = false;
-        _gameOver = false;
-    }
+    Running = false;
+    Paused  = false;
+    _gameOver = false;
+
+
+    meta?.ui?.BindInGameMenu(this);
+}
 
     protected void GameOverNow()
     {
@@ -61,92 +60,52 @@ public abstract class GameManager : MonoBehaviour
             meta.ReportRun(Def, Mode, ScoreP1, ScoreP2);
     }
 
-    // ---------------- A / FIRE ----------------
-    protected bool BtnA(int p = 1)
-    {
-        var k = Keyboard.current; var g = Gamepad.current; var m = Mouse.current;
-        bool kb = k != null && (
-            k.spaceKey.isPressed || k.enterKey.isPressed ||
-            k.eKey.isPressed || k.rKey.isPressed ||
-            k.gKey.isPressed || k.hKey.isPressed ||
-            k.zKey.isPressed || k.xKey.isPressed ||
-            k.leftCtrlKey.isPressed
-        );
-        bool ms = m != null && m.leftButton.isPressed;
-        bool gp = g != null && (
-            g.buttonSouth.isPressed || g.buttonWest.isPressed || g.buttonNorth.isPressed ||
-            g.rightTrigger.ReadValue() > 0.3f || g.leftTrigger.ReadValue() > 0.3f ||
-            g.leftShoulder.isPressed || g.rightShoulder.isPressed
-        );
-        return kb || ms || gp;
-    }
+    // --------------- Input wrappers (via InputManager) ---------------
+    protected Vector2 Move(int p = 1) => InputManager.I ? InputManager.I.Move(p) : Vector2.zero;
+    protected bool BtnA(int p = 1)    => InputManager.I && InputManager.I.Fire(p);
+    protected bool BtnADown(int p=1)  => InputManager.I && InputManager.I.FireDown(p);
 
-    protected bool BtnADown(int p = 1)
-    {
-        var k = Keyboard.current; var g = Gamepad.current; var m = Mouse.current;
-        bool kb = k != null && (
-            k.spaceKey.wasPressedThisFrame || k.enterKey.wasPressedThisFrame ||
-            k.eKey.wasPressedThisFrame || k.rKey.wasPressedThisFrame ||
-            k.gKey.wasPressedThisFrame || k.hKey.wasPressedThisFrame ||
-            k.zKey.wasPressedThisFrame || k.xKey.wasPressedThisFrame ||
-            k.leftCtrlKey.wasPressedThisFrame
-        );
-        bool ms = m != null && m.leftButton.wasPressedThisFrame;
-        bool gp = g != null && (
-            g.buttonSouth.wasPressedThisFrame ||
-            g.buttonWest.wasPressedThisFrame || g.buttonNorth.wasPressedThisFrame ||
-            g.rightTrigger.wasPressedThisFrame || g.leftTrigger.wasPressedThisFrame ||
-            g.leftShoulder.wasPressedThisFrame || g.rightShoulder.wasPressedThisFrame
-        );
-        return kb || ms || gp;
-    }
-
-    // ---------------- BACK ----------------
-    protected bool BackPressed()
-    {
-        var k = Keyboard.current; var g = Gamepad.current; var m = Mouse.current;
-        bool kb = k != null && k.backspaceKey.isPressed;
-        bool gp = g != null && g.buttonEast.isPressed;
-        bool ms = m != null && m.rightButton.isPressed;
-        return kb || gp || ms;
-    }
-
-    protected bool BackPressedUI()
-    {
-        var k = Keyboard.current; var g = Gamepad.current; var m = Mouse.current;
-        bool kb = k != null && k.backspaceKey.wasPressedThisFrame;
-        bool gp = g != null && g.buttonEast.wasPressedThisFrame;
-        bool ms = m != null && m.rightButton.wasPressedThisFrame;
-        return kb || gp || ms;
-    }
-
-    // ---------------- PAUSE ----------------
     protected bool PausePressed()
     {
-        var k = Keyboard.current; var g = Gamepad.current;
-        return (k != null && (k.escapeKey.wasPressedThisFrame || k.pKey.wasPressedThisFrame))
-            || (g != null && (g.startButton.wasPressedThisFrame || g.selectButton.wasPressedThisFrame));
+        if (!InputManager.I) return false;
+        return InputManager.I.UIPauseDown();
     }
 
-    // ---------------- HANDLERS ----------------
-    protected bool HandleGameOver()
+    // Back is used ONLY inside pause as a double-press-to-quit.
+    protected bool BackPressedUI()
     {
-        if (!Running) return true;
-        if (!_gameOver) return false;
+        if (!InputManager.I) return false;
+        return InputManager.I.UIBackDown();
+    }
 
-        _pauseCooldown = Mathf.Max(0f, _pauseCooldown - Time.unscaledDeltaTime);
-        if (_pauseCooldown > 0f) return true;
+    // --------------- Pause/GameOver handlers ---------------
+   protected bool HandleGameOver()
+{
+    if (!Running) return true;
+    if (!_gameOver) return false;
 
-        if (BtnADown())
-        {
-            _gameOver = false;
-            Paused = false;
-            _quitConfirmArmed = false;
-            _pauseCooldown = 1.0f;
-            OnStartMode();
-        }
+    _pauseCooldown = Mathf.Max(0f, _pauseCooldown - Time.unscaledDeltaTime);
+    if (_pauseCooldown > 0f) return true;
+
+    // NEW: allow Back to quit from GAME OVER
+    if (BackPressedUI())
+    {
+        QuitToMenu();
         return true;
     }
+
+    // Existing: Fire to continue
+    if (BtnADown())
+    {
+        _gameOver = false;
+        Paused = false;
+        _quitConfirmArmed = false;
+        _pauseCooldown = 1.0f;
+        OnStartMode();
+    }
+    return true;
+}
+
 
     protected bool HandlePause()
     {
@@ -220,13 +179,6 @@ public abstract class GameManager : MonoBehaviour
             int hintW = HINT.Length * SMALL_W;
             RetroDraw.PrintBig(cx - titleW / 2, cy - 4, "PAUSED", sw, sh, new Color(1f, 1f, 0.8f, 1));
             RetroDraw.PrintSmall(cx - hintW / 2, cy - 16, HINT, sw, sh, new Color(0.85f, 0.9f, 1f, 1));
-
-            if (_quitConfirmArmed)
-            {
-                const string CONFIRM = "PRESS BACK AGAIN TO QUIT";
-                int cW = CONFIRM.Length * SMALL_W;
-                RetroDraw.PrintSmall(cx - cW / 2, cy - 28, CONFIRM, sw, sh, new Color(1f, 0.85f, 0.85f, 1));
-            }
         }
     }
 }

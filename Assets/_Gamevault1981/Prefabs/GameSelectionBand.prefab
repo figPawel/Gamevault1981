@@ -948,8 +948,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 5.0154, y: 74.9}
-  m_SizeDelta: {x: 112.1456, y: 45.197}
+  m_AnchoredPosition: {x: 1.4625, y: 73.812}
+  m_SizeDelta: {x: 75.9022, y: 31.2771}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &9085519665985172336
 CanvasRenderer:
@@ -1006,8 +1006,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 36
-  m_fontSizeBase: 36
+  m_fontSize: 22
+  m_fontSizeBase: 22
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -1565,6 +1565,10 @@ MonoBehaviour:
   btnPlay: {fileID: 8905872521559188807}
   unlockCountdownText: {fileID: 536033259907211215}
   newBadgeText: {fileID: 4650318182202489684}
+  scoreHintMode: 1
+  badgeRainbow: 0
+  badgeRainbowSpeed: 0.45
+  badgeRainbowSpread: 0.15
   hideWhenLocked:
   - {fileID: 2240729497409676325}
   - {fileID: 2240729497409676325}

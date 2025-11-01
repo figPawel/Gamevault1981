@@ -1,6 +1,4 @@
-// UISelectBand.cs — FULL FILE
-// Shows countdown "Unlocks in ..." OR score shortfall, and a pulsing NEW! badge until played.
-// Replaces your current UISelectBand.cs. :contentReference[oaicite:1]{index=1}
+// UISelectBand.cs — FULL FILE (shortfall/absolute toggle + rainbow NEW! + text fix)
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -32,8 +30,16 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     [Tooltip("TMP placed where you want the countdown/shortfall text.")]
     public TMP_Text unlockCountdownText;
 
-    [Header("Badge for newly unlocked & unplayed (beyond defaults)")]
-    public TMP_Text newBadgeText; // optional; set to a TMP on top of the cartridge (e.g., “NEW!”)
+    [Header("Badge for newly unlocked & unplayed")]
+    public TMP_Text newBadgeText; // e.g., “NEW!”
+
+    [Header("Unlock hint style")]
+    public ScoreHintMode scoreHintMode = ScoreHintMode.Shortfall; // Shortfall: "Score X more", Absolute: "Attain a score of Y"
+
+    [Header("Rainbow settings (badge)")]
+    public bool badgeRainbow = true;
+    public float badgeRainbowSpeed = 0.45f;
+    public float badgeRainbowSpread = 0.15f;
 
     [Header("Hide When Locked")]
     public GameObject[] hideWhenLocked;
@@ -60,6 +66,8 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     float _nextTick;
     string _lastCountdownText = "";
     float _badgePulse;
+
+    public enum ScoreHintMode { Shortfall, Absolute }
 
     public void Bind(GameDef def, MetaGameManager meta)
     {
@@ -138,7 +146,7 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
             return;
         }
         _meta?.StartGame(_def);
-        UpdateNewBadge(force:true); // clear on next paint after meta marks played
+        UpdateNewBadge(force:true); // meta marks played; badge will hide next repaint
     }
 
     void SetHighlight(bool on)
@@ -160,7 +168,7 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
             UpdateLockVisuals(force:false);
         }
 
-        // badge pulse
+        // badge pulse + rainbow
         if (newBadgeText && newBadgeText.gameObject.activeSelf)
         {
             _badgePulse += Time.unscaledDeltaTime * 3.0f;
@@ -168,6 +176,8 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
             float a = 0.70f + 0.30f * Mathf.Sin(_badgePulse);
             newBadgeText.rectTransform.localScale = new Vector3(s, s, 1f);
             var c = newBadgeText.color; c.a = a; newBadgeText.color = c;
+
+            if (badgeRainbow) AnimateRainbowTMP(newBadgeText, badgeRainbowSpeed, badgeRainbowSpread);
         }
     }
 
@@ -205,25 +215,36 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
 
         if (_locked && unlockCountdownText)
         {
-            var left = _meta.TimeUntilUnlock(_def);
-            if (left == TimeSpan.MaxValue) // time unlock disabled → just show score path
+            // Compute target threshold and shortfall for this game's step
+            int k = Mathf.Max(1, _def.number - _meta.AlwaysUnlockedFirstN);
+            double baseS = Math.Max(1, _meta.baseScorePerUnlock);
+            double g     = Math.Max(1.000001, (double)_meta.scoreGrowth);
+            double need  = (_meta.scoreGrowth <= 1.000001f) ? baseS * k
+                           : baseS * (Math.Pow(g, k) - 1.0) / (g - 1.0);
+            int target     = (int)Mathf.Ceil((float)need);
+            int shortfall  = Mathf.Max(0, target - _meta.MainScore);
+
+            string scoreClause = "";
+            if (_meta.enableScoreUnlocks && _meta.baseScorePerUnlock > 0)
             {
-                int shortfall = _meta.ScoreShortfallForUnlock(_def);
-                unlockCountdownText.text = (shortfall == int.MaxValue)
-                    ? "Unlock requirements disabled"
-                    : $"Score {shortfall:N0} more to unlock!";
+                if (scoreHintMode == ScoreHintMode.Shortfall)
+                    scoreClause = $" or score {shortfall:N0} more!";
+                else
+                    scoreClause = $" or attain a score of {target:N0}!";
+            }
+
+            var left = _meta.TimeUntilUnlock(_def);
+            if (!_meta.enableTimeUnlocks || left == TimeSpan.MaxValue)
+            {
+                // score-only path
+                if (scoreClause.StartsWith(" or "))
+                    unlockCountdownText.text = scoreClause.Substring(4);
+                else
+                    unlockCountdownText.text = "Unlock requirements disabled";
             }
             else
             {
-                string txt = FormatCountdown(left);
-                int shortfall = _meta.ScoreShortfallForUnlock(_def);
-                string scoreClause = (shortfall == int.MaxValue) ? "" : $"  or score {shortfall:N0}!";
-                string final = $"Unlocks in {txt}{scoreClause}";
-                if (!string.Equals(final, _lastCountdownText))
-                {
-                    _lastCountdownText = final;
-                    unlockCountdownText.text = final;
-                }
+                unlockCountdownText.text = $"Unlocks in {FormatCountdown(left)}{scoreClause}";
             }
         }
         else
@@ -396,5 +417,32 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         var c = Color.HSVToRGB(hue, 0.65f, 0.95f);
         c.a = 1f;
         return c;
+    }
+
+    // ---------- TMP rainbow helper ----------
+    static void AnimateRainbowTMP(TMP_Text t, float speed, float spread)
+    {
+        if (!t || t.textInfo == null) return;
+        t.ForceMeshUpdate();
+        var ti = t.textInfo;
+        float baseHue = Mathf.Repeat(Time.unscaledTime * Mathf.Max(0.01f, speed), 1f);
+
+        for (int i = 0; i < ti.characterCount; i++)
+        {
+            var ch = ti.characterInfo[i];
+            if (!ch.isVisible) continue;
+
+            float h = Mathf.Repeat(baseHue + i * Mathf.Max(0.001f, spread), 1f);
+            Color col = Color.HSVToRGB(h, 1f, 1f);
+            var meshInfo = ti.meshInfo[ch.materialReferenceIndex];
+            int vi = ch.vertexIndex;
+            if (meshInfo.colors32 == null || meshInfo.colors32.Length == 0) continue;
+            meshInfo.colors32[vi + 0] = col;
+            meshInfo.colors32[vi + 1] = col;
+            meshInfo.colors32[vi + 2] = col;
+            meshInfo.colors32[vi + 3] = col;
+            ti.meshInfo[ch.materialReferenceIndex].colors32 = meshInfo.colors32;
+        }
+        t.UpdateVertexData(TMP_VertexDataUpdateFlags.Colors32);
     }
 }

@@ -1,4 +1,4 @@
-// MetaGameManager.cs  — DROP-IN
+// MetaGameManager.cs — FULL FILE (unchanged behavior except guards you already needed)
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -21,7 +21,7 @@ public class GameDef
     public string desc;
     public GameFlags flags;
     public Type implType;
-    public DateTime? unlockAtUtc; // kept for compatibility (not used for logic)
+    public DateTime? unlockAtUtc; // legacy field kept (not used for logic)
 
     public GameDef(string id, string title, int number, string desc, GameFlags flags, Type implType)
     { this.id = id; this.title = title; this.number = number; this.desc = desc; this.flags = flags; this.implType = implType; }
@@ -36,6 +36,8 @@ public class MetaGameManager : MonoBehaviour
     {
         _mainScore = 0;
         PlayerPrefs.DeleteKey(PREF_MAIN_SCORE);
+        PlayerPrefs.DeleteKey(PREF_FIRST_OPEN);
+        PlayerPrefs.DeleteKey(PREF_UNLOCK_SEEN_COUNT);
         PlayerPrefs.Save();
         ui?.BeginMainScoreCount(0, 0);
     }
@@ -53,23 +55,30 @@ public class MetaGameManager : MonoBehaviour
     public AudioClip titleMusic;
 
     [Header("Unlocks (local rules)")]
+    [Tooltip("If ON, locked games appear as disabled bands. If OFF, locked bands are hidden.")]
     public bool ShowLockedBands = true;
-    [Tooltip("First N games are unlocked immediately.")]
+
+    [Tooltip("First N games are unlocked immediately for every player.")]
     public int AlwaysUnlockedFirstN = 20;
+
+    [Tooltip("Offset (seconds) to add to local UTC; keep 0 unless you provide a server offset.")]
     public double serverTimeOffsetSeconds = 0;
 
     [Space(6)]
+    [Tooltip("Enable time-based unlocks: every interval a new game unlocks.")]
     public bool enableTimeUnlocks = true;
-    [Tooltip("Base interval (minutes) for unlocking the next game.")]
+    [Tooltip("Base interval (minutes) for unlocking the NEXT game.")]
     public double baseIntervalMinutes = 60.0;
+    [Tooltip("Linear = every step costs baseInterval. Exponential = cumulative time grows by 'intervalGrowth'.")]
     public UnlockTimeCurve timeCurve = UnlockTimeCurve.Linear;
     [Min(1.0f)] public double intervalGrowth = 1.25;
 
     [Space(6)]
+    [Tooltip("Enable score-based unlocks: reaching thresholds unlocks more games.")]
     public bool enableScoreUnlocks = true;
-    [Tooltip("Base score required per unlock (linear) or first step (exponential).")]
+    [Tooltip("Base score required for unlock progression.")]
     public int baseScorePerUnlock = 5000;
-    [Tooltip("1 = linear (base*k). >1 = exponential cumulative.")]
+    [Tooltip("If 1 → linear (base*k). If >1 → exponential cumulative (base*(g^k − 1)/(g − 1)).")]
     [Min(1f)] public float scoreGrowth = 1.0f;
 
     [Header("Audio Mixer")]
@@ -77,7 +86,7 @@ public class MetaGameManager : MonoBehaviour
     public AudioMixerGroup mixerMusicGroup;
     public AudioMixerGroup mixerSfxGroup;
     public string musicVolumeParam = "MusicVolDb";
-    public string sfxVolumeParam = "SfxVolDb";
+    public string sfxVolumeParam   = "SfxVolDb";
 
     AudioSource _music;
     float _currentBaseMusicVol = 1f;
@@ -90,8 +99,8 @@ public class MetaGameManager : MonoBehaviour
     int _previewToken = 0;
     const float PREVIEW_DELAY = 0.30f;
 
-    readonly Dictionary<string, AudioClip> _trackCache = new Dictionary<string, AudioClip>(StringComparer.OrdinalIgnoreCase);
-    readonly HashSet<string> _trackMissing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, AudioClip> _trackCache = new(StringComparer.OrdinalIgnoreCase);
+    readonly HashSet<string> _trackMissing            = new(StringComparer.OrdinalIgnoreCase);
     Coroutine _prewarmCoro;
     int _playSeq = 0;
 
@@ -105,9 +114,9 @@ public class MetaGameManager : MonoBehaviour
     public DateTime NowUtc => DateTime.UtcNow.AddSeconds(serverTimeOffsetSeconds);
 
     // ---------- PlayerPrefs keys ----------
-    const string PREF_MAIN_SCORE = "main_score";
-    const string PREF_FIRST_OPEN = "first_open_utc";
-    const string PREF_UNLOCK_SEEN_COUNT = "unlocked_seen_count";
+    const string PREF_MAIN_SCORE         = "main_score";
+    const string PREF_FIRST_OPEN         = "first_open_utc";
+    const string PREF_UNLOCK_SEEN_COUNT  = "unlocked_seen_count";
     static string PrefPlayed(string id) => $"played_{id}";
 
     DateTime FirstOpenUtc
@@ -115,25 +124,18 @@ public class MetaGameManager : MonoBehaviour
         get
         {
             if (!PlayerPrefs.HasKey(PREF_FIRST_OPEN)) return DateTime.MinValue;
-            if (DateTime.TryParse(PlayerPrefs.GetString(PREF_FIRST_OPEN), null, DateTimeStyles.RoundtripKind, out var t)) return t;
+            if (DateTime.TryParse(PlayerPrefs.GetString(PREF_FIRST_OPEN), null,
+                DateTimeStyles.RoundtripKind, out var t)) return t;
             return DateTime.MinValue;
         }
     }
-    void EnsureFirstOpenStampAndSeenBaseline()
+    void EnsureFirstOpenStamp()
     {
-        bool stamped = PlayerPrefs.HasKey(PREF_FIRST_OPEN);
-        if (!stamped)
+        // If first-open is missing (fresh profile / wiped prefs), stamp and reset "seen" counter.
+        if (!PlayerPrefs.HasKey(PREF_FIRST_OPEN) || string.IsNullOrEmpty(PlayerPrefs.GetString(PREF_FIRST_OPEN)))
         {
             PlayerPrefs.SetString(PREF_FIRST_OPEN, NowUtc.ToString("o"));
-            PlayerPrefs.Save();
-        }
-
-        // Initialize or repair the "seen" baseline so an old value never suppresses the first banner.
-        int extra = ExtraUnlockedCountNow();
-        int seen  = PlayerPrefs.GetInt(PREF_UNLOCK_SEEN_COUNT, -1);
-        if (seen < 0 || seen > extra)
-        {
-            PlayerPrefs.SetInt(PREF_UNLOCK_SEEN_COUNT, extra);
+            PlayerPrefs.SetInt(PREF_UNLOCK_SEEN_COUNT, 0);
             PlayerPrefs.Save();
         }
     }
@@ -174,8 +176,7 @@ public class MetaGameManager : MonoBehaviour
         BuildGameList();
         if (ui) ui.Init(this);
 
-        // Start the local-unlock timeline, and repair banner baseline if needed
-        EnsureFirstOpenStampAndSeenBaseline();
+        EnsureFirstOpenStamp();
 
         ui?.BindSelection(Games);
         OpenTitle();
@@ -273,7 +274,6 @@ public class MetaGameManager : MonoBehaviour
             implMap.TryGetValue(idNorm, out var implType);
             var def = new GameDef(e.id, e.title, e.number, e.desc, f, implType);
 
-            // keep legacy field so existing catalog files don't break; logic uses local rules now
             if (!string.IsNullOrEmpty(e.unlock_at_utc))
             {
                 if (DateTime.TryParse(e.unlock_at_utc, CultureInfo.InvariantCulture,
@@ -287,14 +287,12 @@ public class MetaGameManager : MonoBehaviour
         }
     }
 
-    // ---------- Unlock math ----------
     int StepsForTimeElapsed(double minutesElapsed)
     {
         if (!enableTimeUnlocks || baseIntervalMinutes <= 0.0001) return 0;
         if (timeCurve == UnlockTimeCurve.Linear)
             return Mathf.Max(0, (int)Math.Floor(minutesElapsed / baseIntervalMinutes));
 
-        // Exponential cumulative: minutes >= base * (g^k - 1) / (g - 1)
         double g = Math.Max(1.000001, intervalGrowth);
         double baseM = baseIntervalMinutes;
         int k = 0;
@@ -354,8 +352,7 @@ public class MetaGameManager : MonoBehaviour
             : baseM * (Math.Pow(g, k) - 1.0) / (g - 1.0);
 
         double elapsed = (NowUtc - FirstOpenUtc).TotalMinutes;
-        double leftMin = Math.Max(0.0, targetMinutes - elapsed);
-        return TimeSpan.FromMinutes(leftMin);
+        return TimeSpan.FromMinutes(Math.Max(0.0, targetMinutes - elapsed));
     }
 
     public int ScoreShortfallForUnlock(GameDef def)
@@ -366,11 +363,11 @@ public class MetaGameManager : MonoBehaviour
         double baseS = Math.Max(1, baseScorePerUnlock);
         int k = StepIndexFor(def);
 
-        double need = (scoreGrowth <= 1.000001f) ? baseS * k
-                     : baseS * (Math.Pow(g, k) - 1.0) / (g - 1.0);
+        double need = (scoreGrowth <= 1.000001f)
+            ? baseS * k
+            : baseS * (Math.Pow(g, k) - 1.0) / (g - 1.0);
 
-        int shortfall = (int)Math.Max(0.0, Math.Ceiling(need - _mainScore));
-        return shortfall;
+        return (int)Math.Max(0.0, Math.Ceiling(need - _mainScore));
     }
 
     public bool HasPlayed(GameDef def)
@@ -468,7 +465,6 @@ public class MetaGameManager : MonoBehaviour
 
         int extraNow = ExtraUnlockedCountNow();
         int prevSeen = PlayerPrefs.GetInt(PREF_UNLOCK_SEEN_COUNT, 0);
-        // Guard: if stored value is out of range, repair it.
         prevSeen = Mathf.Clamp(prevSeen, 0, Mathf.Max(0, extraNow));
         int newly = Mathf.Max(0, extraNow - prevSeen);
         if (newly > 0)

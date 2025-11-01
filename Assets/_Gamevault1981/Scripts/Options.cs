@@ -1,4 +1,4 @@
-// Options.cs
+// Options.cs — FULL FILE (minimal additions: ping InputManager after device changes)
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -60,6 +60,9 @@ public class Options : MonoBehaviour
 
         MetaGameManager.I?.SetMusicVolumeLinear(_musicVol);
         MetaGameManager.I?.SetSfxVolumeLinear(_sfxVol);
+
+        // Make sure InputManager picks up initial mapping.
+        InputManager.I?.ApplyPlayerDevicePrefs();
     }
 
     void Start()
@@ -79,7 +82,6 @@ public class Options : MonoBehaviour
     void Update()
     {
         if (!_visible || _container == null) return;
-
         if (_guardAfterOpen > 0f) { _guardAfterOpen -= Time.unscaledDeltaTime; return; }
 
         var es = EventSystem.current;
@@ -153,8 +155,8 @@ public class Options : MonoBehaviour
         AddToggleRow("Invert Y — Player 2", () => _invertY2, on => { _invertY2 = on; PlayerPrefs.SetInt("invY2", on?1:0); });
 
         // Device rows that SKIP the other player's current device while cycling
-        AddPlayerDeviceRow("Player 1 device", 1);
-        AddPlayerDeviceRow("Player 2 device", 2);
+        AddPlayerDeviceRow("Player 1 device",  1);
+        AddPlayerDeviceRow("Player 2 device",  2);
 
         WireNavigation();
         _built = true;
@@ -220,7 +222,7 @@ public class Options : MonoBehaviour
         _deviceChoices.Add("Keyboard 2");
         _deviceChoices.Add("Mouse");
 
-       int gp = Gamepad.all.Count;
+        int gp = Gamepad.all.Count;
         for (int i = 0; i < gp; i++) _deviceChoices.Add($"Gamepad {i + 1}");
 
         _mapP1 = ClampChoice(_mapP1);
@@ -242,6 +244,8 @@ public class Options : MonoBehaviour
             _mapP2 = (_mapP1 + 1) % _deviceChoices.Count;
         PlayerPrefs.SetInt("map_p1", _mapP1);
         PlayerPrefs.SetInt("map_p2", _mapP2);
+
+        InputManager.I?.ApplyPlayerDevicePrefs();
     }
 
     void ResolveConflict(int pushOther)
@@ -259,6 +263,8 @@ public class Options : MonoBehaviour
             PlayerPrefs.SetInt("map_p1", _mapP1);
         }
         foreach (var r in _rows) r.Refresh();
+
+        InputManager.I?.ApplyPlayerDevicePrefs();
     }
 
     // ---------- row builders ----------
@@ -424,6 +430,7 @@ public class Options : MonoBehaviour
                 _mapP2 = idx;
                 PlayerPrefs.SetInt("map_p2", _mapP2);
             }
+            InputManager.I?.ApplyPlayerDevicePrefs();
         }
 
         void Left()
