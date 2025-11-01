@@ -1,9 +1,10 @@
-// === Options.cs — DROP-IN ===
+// Options.cs
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UnityEngine.InputSystem;
 
 public class Options : MonoBehaviour
 {
@@ -31,7 +32,7 @@ public class Options : MonoBehaviour
     // soundtrack toggles
     bool  _playOnSelection, _playOnTitle, _playInGame;
     float _inGameMusicVol;
-    bool  _allowChipInGame; // new
+    bool  _allowChipInGame;
 
     // input
     bool _invertY1, _invertY2;
@@ -57,7 +58,6 @@ public class Options : MonoBehaviour
         _mapP1      = PlayerPrefs.GetInt("map_p1", 0);
         _mapP2      = PlayerPrefs.GetInt("map_p2", 1);
 
-        // Apply initial state
         MetaGameManager.I?.SetMusicVolumeLinear(_musicVol);
         MetaGameManager.I?.SetSfxVolumeLinear(_sfxVol);
     }
@@ -107,7 +107,7 @@ public class Options : MonoBehaviour
         var v = go.GetComponent<VerticalLayoutGroup>();
         v.childControlHeight = true; v.childForceExpandHeight = false;
         v.childControlWidth  = true; v.childForceExpandWidth  = true;
-        v.spacing = -5f;                           // requested overlap
+        v.spacing = -5f;
         v.padding = new RectOffset(0,0,0,0);
 
         var f = go.GetComponent<ContentSizeFitter>();
@@ -123,8 +123,8 @@ public class Options : MonoBehaviour
         EnsureContainer();
         _rows.Clear();
 
-        RebuildDeviceChoices();    // detect actual devices
-        EnsureDistinctMappings();  // enforce P1 != P2
+        RebuildDeviceChoices();
+        EnsureDistinctMappings();
 
         // AUDIO / VIDEO
         AddSliderRow("Master Music Volume", () => _musicVol, v => {
@@ -164,7 +164,6 @@ public class Options : MonoBehaviour
     {
         if (ui && (ui.selectRoot == null || ui.selectRoot.alpha < 0.5f)) return;
 
-        // Devices may have changed since last open
         RebuildDeviceChoices();
         EnsureDistinctMappings();
 
@@ -194,7 +193,6 @@ public class Options : MonoBehaviour
 
         var firstGameBtn = FindFirstGameBandButton();
 
-        // Refresh layout now that Options collapsed, then correct the scroll once more
         Canvas.ForceUpdateCanvases();
         if (content) LayoutRebuilder.ForceRebuildLayoutImmediate(content);
         if (firstGameBtn) ui?.ScrollToBand(firstGameBtn.transform as RectTransform);
@@ -222,12 +220,7 @@ public class Options : MonoBehaviour
         _deviceChoices.Add("Keyboard 2");
         _deviceChoices.Add("Mouse");
 
-        var names = Input.GetJoystickNames();
-        int gp = 0;
-        if (names != null)
-            for (int i = 0; i < names.Length; i++)
-                if (!string.IsNullOrEmpty(names[i])) gp++;
-
+       int gp = Gamepad.all.Count;
         for (int i = 0; i < gp; i++) _deviceChoices.Add($"Gamepad {i + 1}");
 
         _mapP1 = ClampChoice(_mapP1);
@@ -251,8 +244,6 @@ public class Options : MonoBehaviour
         PlayerPrefs.SetInt("map_p2", _mapP2);
     }
 
-    // When one side picks a device that's already taken, push the other forward to a free slot.
-    // (Still useful for hotplug or list shrink; normal cycling now skips the conflict.)
     void ResolveConflict(int pushOther)
     {
         if (_deviceChoices.Count <= 1) return;
@@ -407,18 +398,17 @@ public class Options : MonoBehaviour
         int OtherMap() => playerIndex == 1 ? _mapP2 : _mapP1;
         int ThisMap()  => playerIndex == 1 ? _mapP1 : _mapP2;
 
-        // Find next free device index skipping the other player's current device.
         int NextFreeFrom(int current, int dir, int other)
         {
             int count = _deviceChoices.Count;
-            if (count <= 1) return current; // nothing to change or forced share
+            if (count <= 1) return current;
             int i = current;
             for (int step = 0; step < count; step++)
             {
                 i = ClampChoice(i + dir);
                 if (i != other) return i;
             }
-            return current; // fallback (e.g., only one free slot)
+            return current;
         }
 
         void SetThis(int idx)

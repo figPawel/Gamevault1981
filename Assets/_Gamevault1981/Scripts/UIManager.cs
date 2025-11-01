@@ -1,7 +1,9 @@
+// UIManager.cs
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using TMPro;
 
 public class UIManager : MonoBehaviour
@@ -38,7 +40,6 @@ public class UIManager : MonoBehaviour
     public TMP_Text igCartNumber;
     [SerializeField] string igLabelsFolder = "labels";
 
-
     [Header("Edge Spacers")]
     public bool UseAutoEdgeMargins = false;
     [Range(0f, 1f)] public float AutoEdgeFactor = 0.50f;
@@ -59,7 +60,6 @@ public class UIManager : MonoBehaviour
 
     float _musicVol = 0.8f;
     float _sfxVol   = 1.0f;
-    float _toastT;
 
     // Input routing
     float _backHold = 0f;
@@ -122,30 +122,31 @@ public class UIManager : MonoBehaviour
             }
         }
 
-        // -------- Unified input routing (Back & Pause) --------
+        // -------- Unified input routing (Back & Pause) — new Input System only --------
         bool backDown = false, backHeld = false, pauseDown = false;
 
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
-        var gp = UnityEngine.InputSystem.Gamepad.current;
+        var gp = Gamepad.current;
         if (gp != null)
         {
-            if (gp.bButton.wasPressedThisFrame) backDown = true;
-            if (gp.bButton.isPressed) backHeld = true;
+            if (gp.buttonEast.wasPressedThisFrame) backDown = true;  // B / Circle
+            if (gp.buttonEast.isPressed) backHeld = true;
             if (gp.startButton.wasPressedThisFrame) pauseDown = true;
         }
-#else
-        if (Input.GetKeyDown(KeyCode.JoystickButton1)) backDown = true; // B
-        if (Input.GetKey(KeyCode.JoystickButton1)) backHeld = true;     // B held
-        if (Input.GetKeyDown(KeyCode.JoystickButton7)) pauseDown = true; // Start
-#endif
 
-        // Keyboard / mouse fallbacks
-        if (Input.GetKeyDown(KeyCode.Backspace)) backDown = true;
-        if (Input.GetKey(KeyCode.Backspace)) backHeld = true;
-        if (Input.GetMouseButtonDown(1)) backDown = true;
-        if (Input.GetMouseButton(1)) backHeld = true;
+        var kb = Keyboard.current;
+        if (kb != null)
+        {
+            if (kb.backspaceKey.wasPressedThisFrame) backDown = true;
+            if (kb.backspaceKey.isPressed) backHeld = true;
+            if (kb.escapeKey.wasPressedThisFrame) pauseDown = true;
+        }
 
-        if (Input.GetKeyDown(KeyCode.Escape)) pauseDown = true;
+        var ms = Mouse.current;
+        if (ms != null)
+        {
+            if (ms.rightButton.wasPressedThisFrame) backDown = true;
+            if (ms.rightButton.isPressed) backHeld = true;
+        }
 
         // Back hold-to-quit timer
         if (backHeld) _backHold += Time.unscaledDeltaTime;
@@ -234,30 +235,30 @@ public class UIManager : MonoBehaviour
         }
     }
 
-   public void ShowSelect(bool on)
-{
-    if (!selectRoot) return;
-    if (on) ClearSelection();
-    selectRoot.alpha = on ? 1 : 0;
-    selectRoot.interactable = on;
-    selectRoot.blocksRaycasts = on;
-
-    if (on)
+    public void ShowSelect(bool on)
     {
-        // Focus the header (Options -> Leaderboards -> Back), not a band
-        GameObject header =
-            (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
-            (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
-            (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
+        if (!selectRoot) return;
+        if (on) ClearSelection();
+        selectRoot.alpha = on ? 1 : 0;
+        selectRoot.interactable = on;
+        selectRoot.blocksRaycasts = on;
 
-        if (header) EventSystem.current?.SetSelectedGameObject(header);
-        if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+        if (on)
+        {
+            // Focus the header (Options -> Leaderboards -> Back), not a band
+            GameObject header =
+                (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
+                (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
+                (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
 
-        // ensure main score text shows current value if no payout running
-        if (!_mainCounting && mainScoreText && _meta != null)
-            mainScoreText.text = _meta.MainScore.ToString("N0");
+            if (header) EventSystem.current?.SetSelectedGameObject(header);
+            if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+
+            // ensure main score text shows current value if no payout running
+            if (!_mainCounting && mainScoreText && _meta != null)
+                mainScoreText.text = _meta.MainScore.ToString("N0");
+        }
     }
-}
 
     public void ShowInGameMenu(bool on)
     {
@@ -286,7 +287,7 @@ public class UIManager : MonoBehaviour
         {
             bool unlocked = _meta == null || _meta.IsUnlocked(g);
             if (!unlocked && _meta != null && !_meta.ShowLockedBands)
-                continue; // hide locked completely if desired
+                continue;
 
             var go = Object.Instantiate(bandPrefab, listRoot);
             var band = go.GetComponent<UISelectBand>();
@@ -305,13 +306,13 @@ public class UIManager : MonoBehaviour
 
         if (_bands.Count > 0)
         {
-     GameObject header =
-    (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
-    (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
-    (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
+            GameObject header =
+                (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
+                (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
+                (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
 
-if (header) EventSystem.current?.SetSelectedGameObject(header);
-if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+            if (header) EventSystem.current?.SetSelectedGameObject(header);
+            if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
         }
     }
 
@@ -361,9 +362,6 @@ if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
                 igCartTitle,
                 igCartNumber,
                 igLabelsFolder
-            
-
-
             );
             if (igCartTitle != null) igCartTitle.color = UISelectBand.AccentFor(gm.Def);
         }
@@ -377,12 +375,11 @@ if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
         if (btnInGameQuit) btnInGameQuit.onClick.RemoveAllListeners();
 
         if (btnInGameQuit) btnInGameQuit.onClick.AddListener(() =>
-      {
-          ShowInGameMenu(false);
-       if (gm) gm.QuitToMenu(); 
-    _meta.QuitToSelection();
-});
-
+        {
+            ShowInGameMenu(false);
+            if (gm) gm.QuitToMenu();
+            _meta.QuitToSelection();
+        });
 
         if (btnInGameSolo) btnInGameSolo.onClick.AddListener(() => { ShowInGameMenu(false); _meta.StartGame(gm.Def, GameMode.Solo); });
         if (btnInGameVs)   btnInGameVs  .onClick.AddListener(() => { ShowInGameMenu(false); _meta.StartGame(gm.Def, GameMode.Versus2P); });
@@ -486,22 +483,6 @@ if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
         }
     }
 
-    void CycleBasicOptions()
-    {
-        float[] steps = { 1f, 0.6f, 0.3f, 0f };
-        int nextM = (System.Array.IndexOf(steps, _musicVol) + 1) % steps.Length;
-        int nextS = (System.Array.IndexOf(steps, _sfxVol) + 1) % steps.Length;
-
-        _musicVol = steps[nextM];
-        _sfxVol = steps[nextS];
-
-        AudioListener.volume = _musicVol;
-        RetroAudio.GlobalSfxVolume = _sfxVol;
-
-        PlayerPrefs.SetFloat("opt_music", _musicVol);
-        PlayerPrefs.SetFloat("opt_sfx", _sfxVol);
-    }
-
     bool SelectionActive() =>
         selectRoot && selectRoot.alpha > 0.5f && selectRoot.interactable;
 
@@ -561,17 +542,16 @@ if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
         ShowInGameMenu(false);
         _meta.QuitToSelection();
 
-       if (selectRoot && selectRoot.alpha > 0.5f)
-{
-    // Prefer top header instead of the first band
-    GameObject header =
-        (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
-        (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
-        (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
+        if (selectRoot && selectRoot.alpha > 0.5f)
+        {
+            GameObject header =
+                (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
+                (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
+                (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
 
-    if (header) EventSystem.current?.SetSelectedGameObject(header);
-    if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
-}
+            if (header) EventSystem.current?.SetSelectedGameObject(header);
+            if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+        }
     }
 
     void OpenTitleFromSelection() => _meta.OpenTitle();
@@ -604,7 +584,6 @@ if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
     Button FirstTitleButton()
     {
         if (btnGameSelection) return btnGameSelection;
-
         if (btnQuit) return btnQuit;
         return null;
     }

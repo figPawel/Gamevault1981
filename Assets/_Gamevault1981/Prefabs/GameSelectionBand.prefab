@@ -812,8 +812,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 516.79285, y: -66.89917}
-  m_SizeDelta: {x: 403.2251, y: 106.2053}
+  m_AnchoredPosition: {x: 490.79, y: -71.628}
+  m_SizeDelta: {x: 801.86, y: 115.66}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &4812390919485977511
 CanvasRenderer:
@@ -1427,10 +1427,7 @@ MonoBehaviour:
   modesText: {fileID: 9196587546077780965}
   statsText: {fileID: 4897361430730442710}
   btnPlay: {fileID: 8905872521559188807}
-  playCostText: {fileID: 5944858300775914458}
   unlockCountdownText: {fileID: 536033259907211215}
-  btnUnlock: {fileID: 8517971092352407836}
-  unlockPriceText: {fileID: 3162285837555514940}
   hideWhenLocked:
   - {fileID: 2240729497409676325}
   - {fileID: 2240729497409676325}
@@ -1438,6 +1435,7 @@ MonoBehaviour:
   - {fileID: 8782870670836922495}
   - {fileID: 6284104946526260445}
   - {fileID: 1167942551745819523}
+  - {fileID: 2979704179823862696}
   labelsFolder: labels
   defaultFocus: {x: 0.5, y: 0.5}
   cropOverrides: []
@@ -1788,6 +1786,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TextMeshProUGUI
+--- !u!1 &2979704179823862696 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 4100872852201903448, guid: 827fa6e279ad3b5408e5c6bc5717b42f, type: 3}
+  m_PrefabInstance: {fileID: 1275419244744177392}
+  m_PrefabAsset: {fileID: 0}
 --- !u!114 &5508468729845854238 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 6755733779637290734, guid: 827fa6e279ad3b5408e5c6bc5717b42f, type: 3}

@@ -1,4 +1,4 @@
-// === GameManager.cs ===
+// GameManager.cs
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -127,14 +127,11 @@ public abstract class GameManager : MonoBehaviour
     }
 
     // ---------------- HANDLERS ----------------
-
-    // 1. Game Over
     protected bool HandleGameOver()
     {
         if (!Running) return true;
         if (!_gameOver) return false;
 
-        // Apply cooldown before accepting Fire after unpause
         _pauseCooldown = Mathf.Max(0f, _pauseCooldown - Time.unscaledDeltaTime);
         if (_pauseCooldown > 0f) return true;
 
@@ -149,7 +146,6 @@ public abstract class GameManager : MonoBehaviour
         return true;
     }
 
-    // 2. Pause
     protected bool HandlePause()
     {
         if (!Running) return true;
@@ -162,7 +158,6 @@ public abstract class GameManager : MonoBehaviour
             if (_quitConfirmTimer <= 0f) _quitConfirmArmed = false;
         }
 
-        // Toggle pause
         if (_pauseCooldown <= 0f && PausePressed())
         {
             Paused = !Paused;
@@ -173,12 +168,11 @@ public abstract class GameManager : MonoBehaviour
 
         if (!Paused) return false;
 
-        // Paused HUD controls
         if (BtnADown())
         {
             Paused = false;
             _quitConfirmArmed = false;
-            _pauseCooldown = 0.2f; // prevent input leak
+            _pauseCooldown = 0.2f;
             return true;
         }
 
@@ -199,7 +193,6 @@ public abstract class GameManager : MonoBehaviour
         return true;
     }
 
-    // ---------- HUD ----------
     protected void DrawCommonHUD(int sw, int sh)
     {
         RetroDraw.PrintSmall(6, RetroDraw.ViewH - 10, $"SCORE {ScoreP1:0000}", sw, sh, Color.white);

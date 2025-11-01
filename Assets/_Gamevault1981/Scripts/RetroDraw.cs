@@ -1,14 +1,13 @@
+// RetroDraw.cs
 using UnityEngine;
 
 public static class RetroDraw
 {
     static Material m;
 
-    // GUI text cache
     static GUIStyle small, big;
     static bool stylesReady;
 
-    // Dynamic logical view
     static int _baseW = 160, _baseH = 192;
     static int _viewW = 160, _viewH = 192;
     public  static int ViewW => _viewW;
@@ -47,7 +46,6 @@ public static class RetroDraw
         }
     }
 
-    /// Call at top of each OnGUI
     public static void Begin(int sw, int sh)
     {
         Ensure();
@@ -93,7 +91,6 @@ public static class RetroDraw
         Rect(new Rect(r.xMax - w, r.yMin, w, r.height), c);
     }
 
-    // Pixel-space rect in dynamic logical view
     public static void PixelRect(int x, int y, int w, int h, int sw, int sh, Color c)
     {
         float rx = (float)x / _viewW;
@@ -103,7 +100,6 @@ public static class RetroDraw
         Rect(new Rect(rx, ry, rw, rh), c);
     }
 
-    // --- Text helpers ---
     static void Print(string text, int x, int y, int sw, int sh, Color color, GUIStyle style)
     {
         Ensure();
@@ -129,10 +125,8 @@ public static class RetroDraw
     public static void PrintBig(int x, int y, string text, int sw, int sh, Color color)
     { Print(text, x, y, sw, sh, color, big); }
 
-    // --- Small shape helper used by SoundBound ---
     public static void PixelStar(int x, int y, int sw, int sh, Color c)
     {
-        // simple 5-point pixel star shape ~7x5 footprint
         PixelRect(x - 0, y + 2, 1, 1, sw, sh, c);
         PixelRect(x - 2, y + 1, 5, 1, sw, sh, c);
         PixelRect(x - 1, y + 0, 3, 1, sw, sh, c);

@@ -1,3 +1,4 @@
+// UISelectBand.cs
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -43,7 +44,7 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     [Tooltip("Leave alpha=0 to auto-generate from game number.")]
     public Color highlightOverride = new Color(0,0,0,0);
 
-    // NEW: lets UIManager auto-scroll this into view when it gets focus
+    // Allows UIManager to auto-scroll this into view when it gets focus
     public Action<RectTransform> onSelected;
     public RectTransform Rect => transform as RectTransform;
 
@@ -91,7 +92,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
             btnPlay.onClick.RemoveAllListeners();
             btnPlay.onClick.AddListener(() => TryStartGame());
 
-            // Make navigation sane: from PLAY -> band, from band -> PLAY (left/right)
             var nPlay = btnPlay.navigation;
             nPlay.mode = Navigation.Mode.Explicit;
             nPlay.selectOnLeft = bandButton ? bandButton : null;
@@ -101,7 +101,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
 
         if (bandButton && !bandButton.targetGraphic)
         {
-            // Prefer a designated frame; else use the band’s background image; else use the cartridge
             bandButton.targetGraphic = (bandHighlightFrame ? (Graphic)bandHighlightFrame
                                          : (Graphic)bandButton.GetComponent<Image>())
                                          ?? (Graphic)cartridgeImage;
@@ -114,7 +113,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         RefreshStats();
     }
 
-    // allow UI to refresh highs without rebuilding bands
     public void RefreshStats()
     {
         if (statsText == null || _def == null) return;
@@ -180,7 +178,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
             if (unlockCountdownText)
                 unlockCountdownText.gameObject.SetActive(_locked);
 
-            // Only hide what you assigned in the Inspector
             if (hideWhenLocked != null)
                 for (int i = 0; i < hideWhenLocked.Length; i++)
                     if (hideWhenLocked[i]) hideWhenLocked[i].SetActive(!_locked);
@@ -224,7 +221,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
 
         tex.filterMode = FilterMode.Point;
         tex.wrapMode   = TextureWrapMode.Clamp;
-
     }
 
     Texture2D TryLoadLabelTexture()
@@ -258,8 +254,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         return null;
     }
 
-
-    // ---------- Helpers ----------
     void SafeSet(TMP_Text t, string s) { if (t) t.text = s ?? ""; }
 
     string Modes(GameFlags f)
@@ -292,7 +286,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         return "";
     }
 
-    // Deterministic, nice-ish palette from game number
     Color AutoColor(GameDef def)
     {
         float hue = ((def.number * 37) % 360) / 360f;
@@ -315,42 +308,38 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         s.colors = cb;
     }
 
-    // ============================================================
-    // ============  SHARED STATIC CARTRIDGE PAINTER  =============
-    // ============================================================
+    // ============  SHARED STATIC CARTRIDGE PAINTER  ============
     public static void PaintCartridgeForGame(
         GameDef def,
         RawImage cartridgeImage,
         TMP_Text cartTitleText,
         TMP_Text numberText)
     {
-        PaintCartridgeForGame(def, cartridgeImage, cartTitleText, numberText,
-                              "labels");
+        PaintCartridgeForGame(def, cartridgeImage, cartTitleText, numberText, "labels");
     }
 
-   public static void PaintCartridgeForGame(
-    GameDef def,
-    RawImage cartridgeImage,
-    TMP_Text cartTitleText,
-    TMP_Text numberText,
-    string labelsFolder
-)
-{
-    if (def == null || cartridgeImage == null) return;
+    public static void PaintCartridgeForGame(
+        GameDef def,
+        RawImage cartridgeImage,
+        TMP_Text cartTitleText,
+        TMP_Text numberText,
+        string labelsFolder
+    )
+    {
+        if (def == null || cartridgeImage == null) return;
 
-    if (cartTitleText) cartTitleText.text = def.title ?? "";
-    if (numberText)    numberText.text    = $"#{def.number}";
+        if (cartTitleText) cartTitleText.text = def.title ?? "";
+        if (numberText)    numberText.text    = $"#{def.number}";
 
-    Texture2D tex = TryLoadLabelTextureStatic(def, labelsFolder);
-    cartridgeImage.texture = tex;
-    cartridgeImage.uvRect  = new Rect(0, 0, 1, 1);   
+        Texture2D tex = TryLoadLabelTextureStatic(def, labelsFolder);
+        cartridgeImage.texture = tex;
+        cartridgeImage.uvRect  = new Rect(0, 0, 1, 1);   
 
-    if (tex == null) return;
+        if (tex == null) return;
 
-    tex.filterMode = FilterMode.Point;
-    tex.wrapMode   = TextureWrapMode.Clamp;
-
-}
+        tex.filterMode = FilterMode.Point;
+        tex.wrapMode   = TextureWrapMode.Clamp;
+    }
 
     static Texture2D TryLoadLabelTextureStatic(GameDef def, string labelsFolder)
     {
@@ -383,8 +372,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         return null;
     }
 
-   
-
     public static Color AccentFor(GameDef def)
     {
         float hue = ((def.number * 37) % 360) / 360f;
@@ -392,6 +379,4 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         c.a = 1f;
         return c;
     }
-
- 
 }

@@ -1,4 +1,4 @@
-// === MetaGameManager.cs ===
+// MetaGameManager.cs
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -9,14 +9,10 @@ using UnityEngine.EventSystems;
 using UnityEngine.Networking;
 using UnityEngine.Audio;
 
-
-
 [Serializable] class Catalog { public string timezone; public Entry[] games; }
 [Serializable] class Entry { public string id; public int number; public string title; public string[] modes; public string desc; public string cover; public string unlock_at_utc; }
 
 [Flags] public enum GameFlags { Solo = 1, Versus2P = 2, Coop2P = 4, Alt2P = 8 }
-
-
 
 public class GameDef
 {
@@ -35,17 +31,15 @@ public class GameDef
 
 public class MetaGameManager : MonoBehaviour
 {
-
     [ContextMenu("Reset Main Score (testing)")]
-public void ResetMainScoreForTesting()
-{
-    _mainScore = 0;
-    PlayerPrefs.DeleteKey("main_score");
-    PlayerPrefs.Save();
+    public void ResetMainScoreForTesting()
+    {
+        _mainScore = 0;
+        PlayerPrefs.DeleteKey("main_score");
+        PlayerPrefs.Save();
+        ui?.BeginMainScoreCount(0, 0);
+    }
 
-    // If Selection is visible, show the zero immediately.
-    ui?.BeginMainScoreCount(0, 0);
-}
     public static MetaGameManager I;
 
     [Header("Scene Hooks")]
@@ -57,7 +51,6 @@ public void ResetMainScoreForTesting()
 
     [Header("Music (fallbacks)")]
     public AudioClip titleMusic;
-
 
     [Header("Unlocks")]
     [Tooltip("If ON, locked games appear as disabled bands with a live countdown. If OFF, locked games are hidden from the list.")]
@@ -78,9 +71,8 @@ public void ResetMainScoreForTesting()
     [Tooltip("Exposed mixer parameter for SFX volume in dB.")]
     public string sfxVolumeParam = "SfxVolDb";
 
-    // --- Audio ---
     AudioSource _music;
-    float _currentBaseMusicVol = 1f; // per-track base, separate from master
+    float _currentBaseMusicVol = 1f;
 
     public RetroAudio audioBus;
 
@@ -90,7 +82,6 @@ public void ResetMainScoreForTesting()
     int _previewToken = 0;
     const float PREVIEW_DELAY = 0.30f;
 
-    // ---------- Track cache / prewarm ----------
     readonly Dictionary<string, AudioClip> _trackCache = new Dictionary<string, AudioClip>(StringComparer.OrdinalIgnoreCase);
     readonly HashSet<string> _trackMissing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     Coroutine _prewarmCoro;
@@ -99,10 +90,9 @@ public void ResetMainScoreForTesting()
     [Header("Soundtrack Preload")]
     public bool PreloadTracksOnSelection = true;
 
-    // ---------- Meta Scores ----------
-    int _sessionScore = 0;                   // accumulates across many runs until we return to Selection
-    int _mainScore = 0;                      // persistent, shown under logo on Selection
-    public int MainScore => _mainScore;      // read-only for UI
+    int _sessionScore = 0;
+    int _mainScore = 0;
+    public int MainScore => _mainScore;
 
     public DateTime NowUtc => DateTime.UtcNow.AddSeconds(serverTimeOffsetSeconds);
 
@@ -112,12 +102,11 @@ public void ResetMainScoreForTesting()
         I = this;
         DontDestroyOnLoad(gameObject);
 
-        if (!ui) ui = FindObjectOfType<UIManager>(true);
+       if (!ui) ui = FindFirstObjectByType<UIManager>(FindObjectsInactive.Include);
         if (!gameHost) gameHost = new GameObject("GameHost").transform;
 
         if (FindFirstObjectByType<AudioListener>() == null) gameObject.AddComponent<AudioListener>();
 
-        // Music source
         _music = gameObject.AddComponent<AudioSource>();
         _music.playOnAwake = false;
         _music.loop = true;
@@ -125,7 +114,6 @@ public void ResetMainScoreForTesting()
         _music.volume = 1f;
         if (mixerMusicGroup) _music.outputAudioMixerGroup = mixerMusicGroup;
 
-        // SFX bus (RetroAudio)
         if (!audioBus)
         {
             var busGO = new GameObject("AudioBus");
@@ -136,11 +124,9 @@ public void ResetMainScoreForTesting()
             if (mixerSfxGroup) src.outputAudioMixerGroup = mixerSfxGroup;
         }
 
-        // Apply saved volumes
         RetroAudio.GlobalSfxVolume = PlayerPrefs.GetFloat("opt_sfx", 1.0f);
         ApplyVolumesFromPrefs();
 
-        // Load persistent main score
         _mainScore = PlayerPrefs.GetInt("main_score", 0);
 
         BuildGameList();
@@ -152,7 +138,7 @@ public void ResetMainScoreForTesting()
     static float LinearToDb(float x)
     {
         x = Mathf.Clamp(x, 0f, 1f);
-        if (x <= 0.0001f) return -80f; // effectively mute
+        if (x <= 0.0001f) return -80f;
         return 20f * Mathf.Log10(x);
     }
 
@@ -161,7 +147,7 @@ public void ResetMainScoreForTesting()
         linear = Mathf.Clamp01(linear);
         PlayerPrefs.SetFloat("opt_music", linear);
         if (mixer) mixer.SetFloat(musicVolumeParam, LinearToDb(linear));
-        else ApplyMusicVolumeToSource(); // fall back to per-source if no mixer
+        else ApplyMusicVolumeToSource();
     }
 
     public void SetSfxVolumeLinear(float linear)
@@ -208,10 +194,19 @@ public void ResetMainScoreForTesting()
 
         System.Type beamer       = typeof(BeamerGame);
         System.Type pillarprince = typeof(PillarPrinceGame);
+        System.Type puzzleracer  = typeof(PuzzleRacerGame);
+        System.Type rrbbyy       = typeof(RRBBYYGame);
+        System.Type cannonman    = typeof(CannonManGame);
+        System.Type circulaire   = typeof(CirculaireGame);
 
         var implMap = new Dictionary<string, System.Type>
         {
-            { "beamer", beamer }, { "pillarprince", pillarprince },
+            { "beamer", beamer },
+            { "pillarprince", pillarprince },
+            { "puzzleracer", puzzleracer },
+            { "rrbbyy", rrbbyy },
+            { "cannonman", cannonman },
+            { "circulaire", circulaire },
         };
 
         foreach (var e in cat.games)
@@ -245,17 +240,13 @@ public void ResetMainScoreForTesting()
         }
     }
 
-    // ---------- Unlock helpers ----------
     public bool IsUnlocked(GameDef def)
     {
         if (def == null) return true;
-        // FIRST N ARE ALWAYS UNLOCKED
         if (def.number > 0 && def.number <= Mathf.Max(0, AlwaysUnlockedFirstN)) return true;
-        // Then fall back to time gate
         return !def.unlockAtUtc.HasValue || NowUtc >= def.unlockAtUtc.Value;
     }
 
-    // ---------- Music control ----------
     void PlayMusic(AudioClip clip)
     {
         if (_music == null) return;
@@ -269,71 +260,64 @@ public void ResetMainScoreForTesting()
 
         _music.clip = clip;
         _music.loop = true;
-        _currentBaseMusicVol = 1f; // title/selection base
+        _currentBaseMusicVol = 1f;
         ApplyMusicVolumeToSource();
         _music.Play();
     }
 
-    public void PlayTitleMusic()     { PlayMusic(titleMusic); }
+    public void PlayTitleMusic() { PlayMusic(titleMusic); }
+    public void StopMusic() { PlayMusic(null); }
 
-    public void StopMusic()          { PlayMusic(null); }
-
-public void OpenTitle()
-{
-    StopGame();
-    ui?.ShowInGameMenu(false);
-    ui?.ShowTitle(true);
-    ui?.ShowSelect(false);
-
-    // Always use title music on the Title screen
-    PlayTitleMusic();
-
-    if (ui && ui.btnGameSelection)
-        EventSystem.current?.SetSelectedGameObject(ui.btnGameSelection.gameObject);
-}
-
-   public void OpenSelection()
-{
-    StopGame();
-    ui?.ShowInGameMenu(false);
-    ui?.BindSelection(Games);
-    ui?.ShowTitle(false);
-
-    // --- Cash out the session into main score (but we'll delay the visual count-up)
-    int from = _mainScore;
-    bool hadSession = _sessionScore > 0;
-    if (hadSession)
+    public void OpenTitle()
     {
-        _mainScore += _sessionScore;
-        _sessionScore = 0;
-        PlayerPrefs.SetInt("main_score", _mainScore);
-        PlayerPrefs.Save();
+        StopGame();
+        ui?.ShowInGameMenu(false);
+        ui?.ShowTitle(true);
+        ui?.ShowSelect(false);
+        PlayTitleMusic();
+
+        if (ui && ui.btnGameSelection)
+            EventSystem.current?.SetSelectedGameObject(ui.btnGameSelection.gameObject);
     }
 
-    ui?.ShowSelect(true);
-    FocusSelectionHeader();                 // << force header focus + top of list
-    ui?.RefreshBandStats();
-
-    // Before starting the count-up, make sure the player briefly sees the header/top.
-    // Also ensure the text shows 'from' until the count starts (prevents a flash of the final total).
-    if (hadSession && ui && ui.mainScoreText)
-        ui.mainScoreText.text = from.ToString("N0");
-
-    StartCoroutine(BeginMainScoreCountAfterDelay(from, _mainScore, hadSession ? 0.35f : 0f));
-
-    // --- Music logic unchanged below ---
-    bool playPerGame = PlayerPrefs.GetInt("msk_sel", 1) != 0;
- if (!playPerGame)
-{
-    if (titleMusic) PlayTitleMusic();
-    else            StopMusic();
-}
-    if (PreloadTracksOnSelection)
+    public void OpenSelection()
     {
-        if (_prewarmCoro != null) StopCoroutine(_prewarmCoro);
-        _prewarmCoro = StartCoroutine(PrewarmAllTracksRoutine());
+        StopGame();
+        ui?.ShowInGameMenu(false);
+        ui?.BindSelection(Games);
+        ui?.ShowTitle(false);
+
+        int from = _mainScore;
+        bool hadSession = _sessionScore > 0;
+        if (hadSession)
+        {
+            _mainScore += _sessionScore;
+            _sessionScore = 0;
+            PlayerPrefs.SetInt("main_score", _mainScore);
+            PlayerPrefs.Save();
+        }
+
+        ui?.ShowSelect(true);
+        FocusSelectionHeader();
+        ui?.RefreshBandStats();
+
+        if (hadSession && ui && ui.mainScoreText)
+            ui.mainScoreText.text = from.ToString("N0");
+
+        StartCoroutine(BeginMainScoreCountAfterDelay(from, _mainScore, hadSession ? 0.35f : 0f));
+
+        bool playPerGame = PlayerPrefs.GetInt("msk_sel", 1) != 0;
+        if (!playPerGame)
+        {
+            if (titleMusic) PlayTitleMusic();
+            else            StopMusic();
+        }
+        if (PreloadTracksOnSelection)
+        {
+            if (_prewarmCoro != null) StopCoroutine(_prewarmCoro);
+            _prewarmCoro = StartCoroutine(PrewarmAllTracksRoutine());
+        }
     }
-}
 
     public void StartGame(GameDef def, GameMode? autoMode = null)
     {
@@ -347,7 +331,6 @@ public void OpenTitle()
         }
         else
         {
-            // ensure title/selection/preview music doesn’t bleed into gameplay
             StopMusic();
         }
 
@@ -387,14 +370,13 @@ public void OpenTitle()
 
     public void QuitApp()
     {
-#if UNITY_EDITOR
+    #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
-#else
+    #else
         Application.Quit();
-#endif
+    #endif
     }
 
-    // -------- Per-game soundtrack preview on band focus --------
     public void PreviewGameTrack(GameDef def)
     {
         if (def == null) return;
@@ -406,7 +388,6 @@ public void OpenTitle()
         StartCoroutine(PreviewRoutine(_previewToken, def.title));
     }
 
-    // ---------- Track cache helpers ----------
     string FindTrackPath(string title, out AudioType type)
     {
         type = AudioType.MPEG;
@@ -441,11 +422,11 @@ public void OpenTitle()
         using (var req = UnityWebRequestMultimedia.GetAudioClip(url, type))
         {
             yield return req.SendWebRequest();
-#if UNITY_2020_2_OR_NEWER
+        #if UNITY_2020_2_OR_NEWER
             if (req.result != UnityWebRequest.Result.Success)
-#else
+        #else
             if (req.isNetworkError || req.isHttpError)
-#endif
+        #endif
             {
                 Debug.LogWarning($"[Gamevault] failed to load soundtrack '{path}': {req.error}");
                 _trackMissing.Add(title);
@@ -470,7 +451,7 @@ public void OpenTitle()
         {
             _music.loop = loop;
             _music.clip = clip;
-            _currentBaseMusicVol = Mathf.Clamp01(volume); // base only; master is via mixer param
+            _currentBaseMusicVol = Mathf.Clamp01(volume);
             ApplyMusicVolumeToSource();
             _music.Play();
         }
@@ -493,22 +474,18 @@ public void OpenTitle()
         yield return PlayTrackRoutineCached(title, 1f, loop: true);
     }
 
-    // ---------- Chiptune gating ----------
-    // If the player wants the modern soundtrack during gameplay, chiptune music from games should not play.
     public bool AllowChiptuneNow()
     {
-        bool allowChip = PlayerPrefs.GetInt("chip_ingame", 1) != 0;   // default ON
-        bool modernInGame = PlayerPrefs.GetInt("msk_game", 0) != 0;   // modern soundtrack preference
+        bool allowChip = PlayerPrefs.GetInt("chip_ingame", 1) != 0;
+        bool modernInGame = PlayerPrefs.GetInt("msk_game", 0) != 0;
         return allowChip && !modernInGame;
     }
 
-    // ---------- Session / High score API ----------
     public void ReportRun(GameDef def, GameMode mode, int scoreP1, int scoreP2)
     {
         int add = Mathf.Max(0, scoreP1) + Mathf.Max(0, scoreP2);
         _sessionScore += add;
 
-        // Debug tracing so you see session accrual every time we add to it
         if (def != null)
             Debug.Log($"[Gamevault] ReportRun: '{def.title}' mode={mode} p1={scoreP1} p2={scoreP2} add={add} session_total={_sessionScore}");
         else
@@ -517,7 +494,6 @@ public void OpenTitle()
         if (def == null) return;
         string id = def.id ?? "";
 
-        // Update per-game highs (unchanged)
         if (mode == GameMode.Solo)
         {
             string k = $"hi1p_{id}";
@@ -534,25 +510,23 @@ public void OpenTitle()
         PlayerPrefs.Save();
     }
 
-
     void FocusSelectionHeader()
-{
-    if (ui == null) return;
+    {
+        if (ui == null) return;
 
-    var es = UnityEngine.EventSystems.EventSystem.current;
-    GameObject header =
-        (ui.btnTopOptions      ? ui.btnTopOptions.gameObject      : null) ??
-        (ui.btnTopLeaderboards ? ui.btnTopLeaderboards.gameObject : null) ??
-        (ui.btnBackFromSelect  ? ui.btnBackFromSelect.gameObject  : null);
+        var es = EventSystem.current;
+        GameObject header =
+            (ui.btnTopOptions      ? ui.btnTopOptions.gameObject      : null) ??
+            (ui.btnTopLeaderboards ? ui.btnTopLeaderboards.gameObject : null) ??
+            (ui.btnBackFromSelect  ? ui.btnBackFromSelect.gameObject  : null);
 
-    if (header && es != null) es.SetSelectedGameObject(header);
-    if (ui.selectScroll) ui.selectScroll.verticalNormalizedPosition = 1f;
-}
+        if (header && es != null) es.SetSelectedGameObject(header);
+        if (ui.selectScroll) ui.selectScroll.verticalNormalizedPosition = 1f;
+    }
 
-// Delay is only used when there was a session payout so the top UI is visible first.
-System.Collections.IEnumerator BeginMainScoreCountAfterDelay(int from, int to, float delay)
-{
-    if (delay > 0f) yield return new WaitForSecondsRealtime(delay);
-    ui?.BeginMainScoreCount(from, to);
-}
+    IEnumerator BeginMainScoreCountAfterDelay(int from, int to, float delay)
+    {
+        if (delay > 0f) yield return new WaitForSecondsRealtime(delay);
+        ui?.BeginMainScoreCount(from, to);
+    }
 }
