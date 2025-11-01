@@ -123,6 +123,7 @@ public class MetaGameManager : MonoBehaviour
 
         BuildGameList();
         if (ui) ui.Init(this);
+        ui?.BindSelection(Games); 
         OpenTitle();
     }
 
