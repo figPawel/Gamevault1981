@@ -36,13 +36,17 @@ public abstract class GameManager : MonoBehaviour
         OnStartMode();
     }
 
-    public virtual void QuitToMenu()
-    {
-        Running = false;
-        Paused  = false;
-        _gameOver = false;
-        if (meta) meta.QuitToSelection();
-    }
+  public virtual void QuitToMenu()
+{
+    // Bank the current run if we’re quitting mid-run (prevents “lost points” when exiting).
+    if (meta && Def != null && !_gameOver && (ScoreP1 > 0 || ScoreP2 > 0))
+        meta.ReportRun(Def, Mode, ScoreP1, ScoreP2);
+
+    Running = false;
+    Paused  = false;
+    _gameOver = false;
+    if (meta) meta.QuitToSelection();
+}
 
     // ------ Central GAME OVER API ------
     protected void GameOverNow()

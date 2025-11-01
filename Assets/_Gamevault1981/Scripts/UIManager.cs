@@ -37,8 +37,7 @@ public class UIManager : MonoBehaviour
     public TMP_Text igCartTitle;
     public TMP_Text igCartNumber;
     [SerializeField] string igLabelsFolder = "labels";
-    [SerializeField] Vector2 igDefaultFocus = new Vector2(0.5f, 0.5f);
-    [SerializeField] UISelectBand.LabelCropOverride[] igCropOverrides;
+
 
     [Header("Edge Spacers")]
     public bool UseAutoEdgeMargins = false;
@@ -361,9 +360,10 @@ if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
                 igCartridgeImage,
                 igCartTitle,
                 igCartNumber,
-                igLabelsFolder,
-                igDefaultFocus,
-                igCropOverrides
+                igLabelsFolder
+            
+
+
             );
             if (igCartTitle != null) igCartTitle.color = UISelectBand.AccentFor(gm.Def);
         }

@@ -225,9 +225,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         tex.filterMode = FilterMode.Point;
         tex.wrapMode   = TextureWrapMode.Clamp;
 
-        var rt = cartridgeImage.rectTransform.rect;
-        float targetAspect = (rt.height <= 0f) ? 1.0f : (rt.width / rt.height);
-        ApplyCoverCrop(cartridgeImage, tex, targetAspect, FindFocus(_def.id));
     }
 
     Texture2D TryLoadLabelTexture()
@@ -261,45 +258,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         return null;
     }
 
-    Vector2 FindFocus(string id)
-    {
-        if (cropOverrides != null)
-        {
-            for (int i = 0; i < cropOverrides.Length; i++)
-            {
-                if (!string.IsNullOrEmpty(cropOverrides[i].id) &&
-                    string.Equals(cropOverrides[i].id, id, StringComparison.OrdinalIgnoreCase))
-                {
-                    var f = cropOverrides[i].focus;
-                    return new Vector2(Mathf.Clamp01(f.x), Mathf.Clamp01(f.y));
-                }
-            }
-        }
-        return new Vector2(Mathf.Clamp01(defaultFocus.x), Mathf.Clamp01(defaultFocus.y));
-    }
-
-    void ApplyCoverCrop(RawImage img, Texture2D tex, float targetAspect, Vector2 focus01)
-    {
-        if (tex == null) { img.uvRect = new Rect(0,0,1,1); return; }
-
-        float srcAspect = (float)tex.width / Mathf.Max(1, tex.height);
-        focus01 = new Vector2(Mathf.Clamp01(focus01.x), Mathf.Clamp01(focus01.y));
-
-        if (srcAspect > targetAspect)
-        {
-            // Source wider → crop horizontally
-            float uvW = targetAspect / srcAspect;
-            float u   = Mathf.Clamp(focus01.x - uvW * 0.5f, 0f, 1f - uvW);
-            img.uvRect = new Rect(u, 0f, uvW, 1f);
-        }
-        else
-        {
-            // Source taller → crop vertically
-            float uvH = srcAspect / targetAspect;
-            float v   = Mathf.Clamp(focus01.y - uvH * 0.5f, 0f, 1f - uvH);
-            img.uvRect = new Rect(0f, v, 1f, uvH);
-        }
-    }
 
     // ---------- Helpers ----------
     void SafeSet(TMP_Text t, string s) { if (t) t.text = s ?? ""; }
@@ -367,38 +325,32 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         TMP_Text numberText)
     {
         PaintCartridgeForGame(def, cartridgeImage, cartTitleText, numberText,
-                              "labels", new Vector2(0.5f, 0.5f), null);
+                              "labels");
     }
 
-    public static void PaintCartridgeForGame(
-        GameDef def,
-        RawImage cartridgeImage,
-        TMP_Text cartTitleText,
-        TMP_Text numberText,
-        string labelsFolder,
-        Vector2 defaultFocus,
-        LabelCropOverride[] cropOverrides)
-    {
-        if (def == null || cartridgeImage == null) return;
+   public static void PaintCartridgeForGame(
+    GameDef def,
+    RawImage cartridgeImage,
+    TMP_Text cartTitleText,
+    TMP_Text numberText,
+    string labelsFolder
+)
+{
+    if (def == null || cartridgeImage == null) return;
 
-        if (cartTitleText) cartTitleText.text = def.title ?? "";
-        if (numberText)    numberText.text    = $"#{def.number}";
+    if (cartTitleText) cartTitleText.text = def.title ?? "";
+    if (numberText)    numberText.text    = $"#{def.number}";
 
-        Texture2D tex = TryLoadLabelTextureStatic(def, labelsFolder);
-        cartridgeImage.texture = tex;
-        cartridgeImage.uvRect  = new Rect(0,0,1,1);
+    Texture2D tex = TryLoadLabelTextureStatic(def, labelsFolder);
+    cartridgeImage.texture = tex;
+    cartridgeImage.uvRect  = new Rect(0, 0, 1, 1);   
 
-        if (tex == null) return;
+    if (tex == null) return;
 
-        tex.filterMode = FilterMode.Point;
-        tex.wrapMode   = TextureWrapMode.Clamp;
+    tex.filterMode = FilterMode.Point;
+    tex.wrapMode   = TextureWrapMode.Clamp;
 
-        var rt = cartridgeImage.rectTransform.rect;
-        float targetAspect = (rt.height <= 0f) ? 1.0f : (rt.width / rt.height);
-
-        var focus = FindFocusStatic(def.id, defaultFocus, cropOverrides);
-        ApplyCoverCropStatic(cartridgeImage, tex, targetAspect, focus);
-    }
+}
 
     static Texture2D TryLoadLabelTextureStatic(GameDef def, string labelsFolder)
     {
@@ -431,22 +383,7 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         return null;
     }
 
-    static Vector2 FindFocusStatic(string id, Vector2 defaultFocus, LabelCropOverride[] cropOverrides)
-    {
-        if (cropOverrides != null)
-        {
-            for (int i = 0; i < cropOverrides.Length; i++)
-            {
-                if (!string.IsNullOrEmpty(cropOverrides[i].id) &&
-                    string.Equals(cropOverrides[i].id, id, StringComparison.OrdinalIgnoreCase))
-                {
-                    var f = cropOverrides[i].focus;
-                    return new Vector2(Mathf.Clamp01(f.x), Mathf.Clamp01(f.y));
-                }
-            }
-        }
-        return new Vector2(Mathf.Clamp01(defaultFocus.x), Mathf.Clamp01(defaultFocus.y));
-    }
+   
 
     public static Color AccentFor(GameDef def)
     {
@@ -456,24 +393,5 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         return c;
     }
 
-    static void ApplyCoverCropStatic(RawImage img, Texture2D tex, float targetAspect, Vector2 focus01)
-    {
-        if (tex == null) { img.uvRect = new Rect(0,0,1,1); return; }
-
-        float srcAspect = (float)tex.width / Mathf.Max(1, tex.height);
-        focus01 = new Vector2(Mathf.Clamp01(focus01.x), Mathf.Clamp01(focus01.y));
-
-        if (srcAspect > targetAspect)
-        {
-            float uvW = targetAspect / srcAspect;
-            float u   = Mathf.Clamp(focus01.x - uvW * 0.5f, 0f, 1f - uvW);
-            img.uvRect = new Rect(u, 0f, uvW, 1f);
-        }
-        else
-        {
-            float uvH = srcAspect / targetAspect;
-            float v   = Mathf.Clamp(focus01.y - uvH * 0.5f, 0f, 1f - uvH);
-            img.uvRect = new Rect(0f, v, 1f, uvH);
-        }
-    }
+ 
 }
