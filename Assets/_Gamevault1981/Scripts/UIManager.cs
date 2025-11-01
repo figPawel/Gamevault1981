@@ -1,6 +1,4 @@
-// UIManager.cs — FULL FILE
-// Adds banner support for “X NEW GAMES UNLOCKED!” and keeps everything else intact.
-// Replaces your current UIManager.cs. :contentReference[oaicite:2]{index=2}
+// UIManager.cs — DROP-IN (banner placement + mouse wheel scrolling fix)
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -19,7 +17,7 @@ public class UIManager : MonoBehaviour
     public CanvasGroup selectRoot;
     public RectTransform listRoot;          // Content
     public GameObject bandPrefab;
-    public GameObject unlockBannerPrefab;   // <- assign your narrow copy with a single TMP
+    public GameObject unlockBannerPrefab;   // assign slim prefab with one TMP
     public Button btnBackFromSelect;
     public Button btnTopOptions;
     public Button btnTopLeaderboards;
@@ -50,12 +48,9 @@ public class UIManager : MonoBehaviour
     public float BottomEdgeMargin = 0f;
 
     [Header("Selection: Main Score")]
-    public TMP_Text mainScoreText;                 // place under the logo on Selection
-    [Tooltip("Units per second for the main score count-up.")]
+    public TMP_Text mainScoreText;
     public float mainScoreCountSpeed = 600f;
-    [Tooltip("Beep frequency for each tick (0 = silent).")]
     public float mainScoreTickHz = 660f;
-    [Tooltip("Beep frequency when finishing (0 = silent).")]
     public float mainScoreFinishHz = 880f;
 
     MetaGameManager _meta;
@@ -64,23 +59,19 @@ public class UIManager : MonoBehaviour
     float _musicVol = 0.8f;
     float _sfxVol   = 1.0f;
 
-    // Input routing
     float _backHold = 0f;
     const float BackHoldToQuit = 0.35f;
 
     RectTransform _spacerTop, _spacerBottom;
     bool _builtList = false;
 
-    // Selection beep for any focused control
     GameObject _lastSel;
 
-    // Main score count-up state
     bool  _mainCounting;
     int   _mainFrom, _mainTo;
     float _mainCurrent;
     int   _mainShown = -1;
 
-    // New-unlocks banner
     GameObject _bannerGO;
     TMP_Text _bannerTxt;
     float _bannerPulseT;
@@ -106,7 +97,7 @@ public class UIManager : MonoBehaviour
 
     void Update()
     {
-        // --- animate main score payout
+        // score count-up
         if (_mainCounting)
         {
             float step = Mathf.Max(1f, mainScoreCountSpeed) * Time.unscaledDeltaTime;
@@ -130,7 +121,7 @@ public class UIManager : MonoBehaviour
             }
         }
 
-        // ---- banner pulse
+        // banner pulse
         if (_bannerGO && _bannerGO.activeInHierarchy)
         {
             _bannerPulseT += Time.unscaledDeltaTime * 2.6f;
@@ -140,7 +131,24 @@ public class UIManager : MonoBehaviour
             if (_bannerTxt) { var c = _bannerTxt.color; c.a = a; _bannerTxt.color = c; }
         }
 
-        // -------- Unified input routing
+        // --- mouse wheel scrolling works immediately when over viewport ---
+        if (SelectionActive() && selectScroll && selectViewport && Mouse.current != null)
+        {
+            float wheel = Mouse.current.scroll.ReadValue().y;
+            if (Mathf.Abs(wheel) > 0.01f)
+            {
+                Vector2 sp = Mouse.current.position.ReadValue();
+                if (RectTransformUtility.RectangleContainsScreenPoint(selectViewport, sp, null))
+                {
+                    // Normalize: positive wheel = scroll up
+                    float sens = 0.0016f; // tweak if needed
+                    float v = Mathf.Clamp01(selectScroll.verticalNormalizedPosition + wheel * sens);
+                    selectScroll.verticalNormalizedPosition = v;
+                }
+            }
+        }
+
+        // unified input
         bool backDown = false, backHeld = false, pauseDown = false;
 
         var gp = Gamepad.current;
@@ -180,7 +188,7 @@ public class UIManager : MonoBehaviour
             if (pauseDown) HandlePauseToggle();
         }
 
-        // Keep viewport pinned to top when a header button is focused
+        // viewport guard
         if (selectRoot && selectRoot.interactable && selectScroll)
         {
             var es0 = EventSystem.current;
@@ -204,7 +212,7 @@ public class UIManager : MonoBehaviour
         }
         StickyFocusGuard();
 
-        // --- selection beep for any newly focused selectable
+        // focus beep
         var es = EventSystem.current;
         var cur = es ? es.currentSelectedGameObject : null;
         if (cur != null && cur != _lastSel)
@@ -262,7 +270,6 @@ public class UIManager : MonoBehaviour
 
         if (on)
         {
-            // Focus header, not a band
             GameObject header =
                 (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
                 (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
@@ -378,11 +385,15 @@ public class UIManager : MonoBehaviour
 
         _bannerGO = Instantiate(unlockBannerPrefab, listRoot);
         _bannerTxt = _bannerGO.GetComponentInChildren<TMP_Text>(true);
-        if (_bannerTxt) _bannerTxt.text = $"{count} NEW GAMES UNLOCKED!";
+        if (_bannerTxt) _bannerTxt.text = $"NEW GAMES UNLOCKED!";
         _bannerPulseT = 0f;
 
-        // try to place just below the header
-        _bannerGO.transform.SetSiblingIndex(1);
+        // Place just BELOW the header group (logo/score/buttons)
+        var headerGroup = btnBackFromSelect ? btnBackFromSelect.transform.parent as RectTransform : null;
+        if (headerGroup && headerGroup.parent == listRoot)
+            _bannerGO.transform.SetSiblingIndex(headerGroup.GetSiblingIndex() + 1);
+        else
+            _bannerGO.transform.SetSiblingIndex(1);
     }
 
     public void HideNewUnlocksBanner()
@@ -680,7 +691,6 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    // ---------- Public helpers ----------
     public void BeginMainScoreCount(int from, int to)
     {
         if (!mainScoreText) return;

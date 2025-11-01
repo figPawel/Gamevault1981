@@ -2442,14 +2442,14 @@ MonoBehaviour:
   gameHost: {fileID: 498365544}
   titleMusic: {fileID: 8300000, guid: 005fa31a25872354e81f16a5e90b2e11, type: 3}
   ShowLockedBands: 1
-  AlwaysUnlockedFirstN: 10
+  AlwaysUnlockedFirstN: 3
   serverTimeOffsetSeconds: 0
   enableTimeUnlocks: 1
   baseIntervalMinutes: 1440
   timeCurve: 0
   intervalGrowth: 1.25
   enableScoreUnlocks: 1
-  baseScorePerUnlock: 5000
+  baseScorePerUnlock: 100
   scoreGrowth: 1
   mixer: {fileID: 24100000, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
   mixerMusicGroup: {fileID: 1653838731606186422, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}

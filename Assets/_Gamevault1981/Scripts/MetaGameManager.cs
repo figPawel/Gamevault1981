@@ -1,6 +1,4 @@
-// MetaGameManager.cs  — FULL FILE
-// Adds local time/score unlock rules, first-open stamp, "new" tracking, and banner trigger.
-// Replaces your current MetaGameManager.cs. :contentReference[oaicite:0]{index=0}
+// MetaGameManager.cs  — DROP-IN
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -23,7 +21,7 @@ public class GameDef
     public string desc;
     public GameFlags flags;
     public Type implType;
-    public DateTime? unlockAtUtc; // kept but unused for logic now (we show our own countdown)
+    public DateTime? unlockAtUtc; // kept for compatibility (not used for logic)
 
     public GameDef(string id, string title, int number, string desc, GameFlags flags, Type implType)
     { this.id = id; this.title = title; this.number = number; this.desc = desc; this.flags = flags; this.implType = implType; }
@@ -37,7 +35,7 @@ public class MetaGameManager : MonoBehaviour
     public void ResetMainScoreForTesting()
     {
         _mainScore = 0;
-        PlayerPrefs.DeleteKey("main_score");
+        PlayerPrefs.DeleteKey(PREF_MAIN_SCORE);
         PlayerPrefs.Save();
         ui?.BeginMainScoreCount(0, 0);
     }
@@ -55,39 +53,30 @@ public class MetaGameManager : MonoBehaviour
     public AudioClip titleMusic;
 
     [Header("Unlocks (local rules)")]
-    [Tooltip("If ON, locked games appear as disabled bands. If OFF, locked bands are hidden.")]
     public bool ShowLockedBands = true;
-
-    [Tooltip("First N games are unlocked immediately for every player.")]
+    [Tooltip("First N games are unlocked immediately.")]
     public int AlwaysUnlockedFirstN = 20;
-
-    [Tooltip("Server time offset if you provide one; unused for logic but kept for completeness.")]
     public double serverTimeOffsetSeconds = 0;
 
     [Space(6)]
-    [Tooltip("Enable time-based unlocks: every Interval a new game unlocks.")]
     public bool enableTimeUnlocks = true;
     [Tooltip("Base interval (minutes) for unlocking the next game.")]
     public double baseIntervalMinutes = 60.0;
-    [Tooltip("Linear = every step costs baseInterval. Exponential = cumulative time grows by 'intervalGrowth'.")]
     public UnlockTimeCurve timeCurve = UnlockTimeCurve.Linear;
     [Min(1.0f)] public double intervalGrowth = 1.25;
 
     [Space(6)]
-    [Tooltip("Enable score-based unlocks: reaching thresholds unlocks more games.")]
     public bool enableScoreUnlocks = true;
-    [Tooltip("Base score required for unlock progression.")]
+    [Tooltip("Base score required per unlock (linear) or first step (exponential).")]
     public int baseScorePerUnlock = 5000;
-    [Tooltip("If 1 → linear (base*k). If >1 → exponential cumulative (base*(g^k-1)/(g-1)).")]
+    [Tooltip("1 = linear (base*k). >1 = exponential cumulative.")]
     [Min(1f)] public float scoreGrowth = 1.0f;
 
     [Header("Audio Mixer")]
     public AudioMixer mixer;
     public AudioMixerGroup mixerMusicGroup;
     public AudioMixerGroup mixerSfxGroup;
-    [Tooltip("Exposed mixer parameter for music volume in dB.")]
     public string musicVolumeParam = "MusicVolDb";
-    [Tooltip("Exposed mixer parameter for SFX volume in dB.")]
     public string sfxVolumeParam = "SfxVolDb";
 
     AudioSource _music;
@@ -118,7 +107,7 @@ public class MetaGameManager : MonoBehaviour
     // ---------- PlayerPrefs keys ----------
     const string PREF_MAIN_SCORE = "main_score";
     const string PREF_FIRST_OPEN = "first_open_utc";
-    const string PREF_UNLOCK_SEEN_COUNT = "unlocked_seen_count"; // extra unlocked beyond AlwaysUnlockedFirstN the user has already been told about
+    const string PREF_UNLOCK_SEEN_COUNT = "unlocked_seen_count";
     static string PrefPlayed(string id) => $"played_{id}";
 
     DateTime FirstOpenUtc
@@ -130,11 +119,21 @@ public class MetaGameManager : MonoBehaviour
             return DateTime.MinValue;
         }
     }
-    void EnsureFirstOpenStamp()
+    void EnsureFirstOpenStampAndSeenBaseline()
     {
-        if (!PlayerPrefs.HasKey(PREF_FIRST_OPEN))
+        bool stamped = PlayerPrefs.HasKey(PREF_FIRST_OPEN);
+        if (!stamped)
         {
             PlayerPrefs.SetString(PREF_FIRST_OPEN, NowUtc.ToString("o"));
+            PlayerPrefs.Save();
+        }
+
+        // Initialize or repair the "seen" baseline so an old value never suppresses the first banner.
+        int extra = ExtraUnlockedCountNow();
+        int seen  = PlayerPrefs.GetInt(PREF_UNLOCK_SEEN_COUNT, -1);
+        if (seen < 0 || seen > extra)
+        {
+            PlayerPrefs.SetInt(PREF_UNLOCK_SEEN_COUNT, extra);
             PlayerPrefs.Save();
         }
     }
@@ -175,8 +174,8 @@ public class MetaGameManager : MonoBehaviour
         BuildGameList();
         if (ui) ui.Init(this);
 
-        // stamp first-open moment here (we want time to start as soon as app is first run)
-        EnsureFirstOpenStamp();
+        // Start the local-unlock timeline, and repair banner baseline if needed
+        EnsureFirstOpenStampAndSeenBaseline();
 
         ui?.BindSelection(Games);
         OpenTitle();
@@ -295,14 +294,13 @@ public class MetaGameManager : MonoBehaviour
         if (timeCurve == UnlockTimeCurve.Linear)
             return Mathf.Max(0, (int)Math.Floor(minutesElapsed / baseIntervalMinutes));
 
-        // Exponential (cumulative): find largest k s.t. minutesElapsed >= base * (g^k - 1) / (g - 1)
+        // Exponential cumulative: minutes >= base * (g^k - 1) / (g - 1)
         double g = Math.Max(1.000001, intervalGrowth);
         double baseM = baseIntervalMinutes;
         int k = 0;
-        double needCum = 0.0;
         for (int i = 0; i < Games.Count; i++)
         {
-            needCum = baseM * (Math.Pow(g, i + 1) - 1.0) / (g - 1.0);
+            double needCum = baseM * (Math.Pow(g, i + 1) - 1.0) / (g - 1.0);
             if (minutesElapsed + 1e-6 >= needCum) k = i + 1; else break;
         }
         return k;
@@ -314,7 +312,6 @@ public class MetaGameManager : MonoBehaviour
         if (scoreGrowth <= 1.000001f)
             return Mathf.Max(0, score / Mathf.Max(1, baseScorePerUnlock));
 
-        // Exponential cumulative: base*(g^k - 1)/(g-1) <= score
         double g = Math.Max(1.000001, (double)scoreGrowth);
         double baseS = Math.Max(1, baseScorePerUnlock);
         int k = 0;
@@ -342,8 +339,8 @@ public class MetaGameManager : MonoBehaviour
         return extra >= wantIndex;
     }
 
-    // For UI: time remaining and score shortfall for *this* game’s step
-    int StepIndexFor(GameDef def) => Mathf.Max(1, def.number - AlwaysUnlockedFirstN); // 1-based within the progression
+    int StepIndexFor(GameDef def) => Mathf.Max(1, def.number - AlwaysUnlockedFirstN);
+
     public TimeSpan TimeUntilUnlock(GameDef def)
     {
         if (!enableTimeUnlocks || baseIntervalMinutes <= 0.0001) return TimeSpan.MaxValue;
@@ -352,9 +349,9 @@ public class MetaGameManager : MonoBehaviour
         double baseM = baseIntervalMinutes;
         int k = StepIndexFor(def);
 
-        double targetMinutes;
-        if (timeCurve == UnlockTimeCurve.Linear) targetMinutes = baseM * k;
-        else targetMinutes = baseM * (Math.Pow(g, k) - 1.0) / (g - 1.0);
+        double targetMinutes = (timeCurve == UnlockTimeCurve.Linear)
+            ? baseM * k
+            : baseM * (Math.Pow(g, k) - 1.0) / (g - 1.0);
 
         double elapsed = (NowUtc - FirstOpenUtc).TotalMinutes;
         double leftMin = Math.Max(0.0, targetMinutes - elapsed);
@@ -369,9 +366,8 @@ public class MetaGameManager : MonoBehaviour
         double baseS = Math.Max(1, baseScorePerUnlock);
         int k = StepIndexFor(def);
 
-        double need;
-        if (scoreGrowth <= 1.000001f) need = baseS * k;
-        else need = baseS * (Math.Pow(g, k) - 1.0) / (g - 1.0);
+        double need = (scoreGrowth <= 1.000001f) ? baseS * k
+                     : baseS * (Math.Pow(g, k) - 1.0) / (g - 1.0);
 
         int shortfall = (int)Math.Max(0.0, Math.Ceiling(need - _mainScore));
         return shortfall;
@@ -430,7 +426,6 @@ public class MetaGameManager : MonoBehaviour
         ui?.BindSelection(Games);
         ui?.ShowTitle(false);
 
-        // Score payout
         int from = _mainScore;
         bool hadSession = _sessionScore > 0;
         if (hadSession)
@@ -450,8 +445,6 @@ public class MetaGameManager : MonoBehaviour
 
         float delay = hadSession ? 0.35f : 0f;
         StartCoroutine(BeginMainScoreCountAfterDelay(from, _mainScore, delay));
-
-        // After payout finishes, check for new unlocks and show banner
         StartCoroutine(ShowNewUnlocksBannerAfterPayout(from, _mainScore, delay));
 
         bool playPerGame = PlayerPrefs.GetInt("msk_sel", 1) != 0;
@@ -469,13 +462,14 @@ public class MetaGameManager : MonoBehaviour
 
     IEnumerator ShowNewUnlocksBannerAfterPayout(int fromScore, int toScore, float delayBeforeStart)
     {
-        // approximate payout duration from UI speed
         float countSpeed = (ui && ui.mainScoreCountSpeed > 0f) ? ui.mainScoreCountSpeed : 600f;
         float payoutSeconds = Mathf.Clamp((toScore - fromScore) / Mathf.Max(1f, countSpeed), 0f, 6f);
         yield return new WaitForSecondsRealtime(delayBeforeStart + payoutSeconds + 0.15f);
 
         int extraNow = ExtraUnlockedCountNow();
         int prevSeen = PlayerPrefs.GetInt(PREF_UNLOCK_SEEN_COUNT, 0);
+        // Guard: if stored value is out of range, repair it.
+        prevSeen = Mathf.Clamp(prevSeen, 0, Mathf.Max(0, extraNow));
         int newly = Mathf.Max(0, extraNow - prevSeen);
         if (newly > 0)
         {
@@ -489,7 +483,6 @@ public class MetaGameManager : MonoBehaviour
     {
         if (def == null) return;
 
-        // mark as played to clear "NEW!" badge once visited
         MarkPlayed(def);
 
         bool wantInGameMusic = PlayerPrefs.GetInt("msk_game", 0) != 0;
