@@ -1,9 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-/// Gamevault 1981 MenuGridController (simple and sane)
-/// Endless neon grid with optional squeeze toward a Vault
-/// Single Vault instance; proper cleanup
 [ExecuteAlways]
 public class MenuGridController : MonoBehaviour
 {

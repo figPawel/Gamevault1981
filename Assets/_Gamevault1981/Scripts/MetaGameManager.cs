@@ -1,4 +1,4 @@
-// === MetaGameManager.cs — DROP-IN ===
+// === MetaGameManager.cs ===
 using System;
 using System.Collections;
 using System.Collections.Generic;

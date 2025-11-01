@@ -4,11 +4,6 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using TMPro;
 
-/// One-line, gamepad/keyboard/mouse friendly option row.
-/// - Up/Down: normal navigation
-/// - Left/Right: adjust value (consumed locally)
-/// - Click: first selects, second changes (Right)
-/// - Submit/A: move to next row
 public class OptionBand : MonoBehaviour,
     ISelectHandler, IDeselectHandler, ISubmitHandler, IMoveHandler, IPointerClickHandler
 {

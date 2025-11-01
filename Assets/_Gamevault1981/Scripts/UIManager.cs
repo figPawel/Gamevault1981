@@ -9,7 +9,6 @@ public class UIManager : MonoBehaviour
     [Header("Title")]
     public CanvasGroup titleRoot;
     public Button btnGameSelection;
-    public Button btnOptions;
     public Button btnQuit;
 
     [Header("Selection")]
@@ -593,7 +592,7 @@ public class UIManager : MonoBehaviour
     Button FirstTitleButton()
     {
         if (btnGameSelection) return btnGameSelection;
-        if (btnOptions) return btnOptions;
+
         if (btnQuit) return btnQuit;
         return null;
     }

@@ -1,5 +1,4 @@
-// === GameManager.cs — DROP-IN ===
-// Input System only. Centralizes Paused + GameOver overlays and controls.
+// === GameManager.cs ===
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -21,8 +20,6 @@ public abstract class GameManager : MonoBehaviour
 
     bool _guiBackLatchDown, _guiBackLatchHeld;
     bool _guiALatchDown,    _guiALatchHeld;
-
-    protected bool AllowChiptuneNow => meta ? meta.AllowChiptuneNow() : true;
 
     public virtual void Begin() { }
     public virtual void OnStartMode() { }
@@ -54,11 +51,9 @@ public abstract class GameManager : MonoBehaviour
         _gameOver = true;
         Paused = false;               // cannot pause while game over
 
-        // NEW: push run scores into session + highs
+        // push run scores into session + highs
         if (meta && Def != null)
             meta.ReportRun(Def, Mode, ScoreP1, ScoreP2);
-
-        if (meta && meta.audioBus) meta.audioBus.BeepOnce(120f, 0.12f, 0.10f);
     }
 
     // ---------------- A / FIRE ----------------
@@ -149,7 +144,6 @@ public abstract class GameManager : MonoBehaviour
         // GAME OVER takes precedence, also handles "A = retry" universally.
         if (_gameOver)
         {
-            // No pausing during Game Over; allow instant retry on A.
             if (BtnADown()) { _gameOver = false; Paused = false; OnStartMode(); }
             return true;
         }
@@ -161,7 +155,6 @@ public abstract class GameManager : MonoBehaviour
         {
             Paused = !Paused;
             _pauseCooldown = 0.15f;
-            if (meta && meta.audioBus) meta.audioBus.BeepOnce(Paused ? 260 : 320, 0.05f);
         }
 
         return Paused;
@@ -170,12 +163,11 @@ public abstract class GameManager : MonoBehaviour
     // ---------- Shared HUD (score + centered overlays) ----------
     protected void DrawCommonHUD(int sw, int sh)
     {
-        // score (simple text, no box)
         RetroDraw.PrintSmall(6, RetroDraw.ViewH - 10, $"SCORE {ScoreP1:0000}", sw, sh, Color.white);
 
         int vw = RetroDraw.ViewW, vh = RetroDraw.ViewH;
-        const int BIG_W = 8;    // approx. glyph width for PrintBig
-        const int SMALL_W = 5;  // approx. glyph width for PrintSmall
+        const int BIG_W = 8;
+        const int SMALL_W = 5;
         const string HINT = "FIRE: CONTINUE  BACK: QUIT";
 
         int cx = vw / 2;
@@ -185,7 +177,6 @@ public abstract class GameManager : MonoBehaviour
         {
             int titleW = "GAME OVER".Length * BIG_W;
             int hintW  = HINT.Length * SMALL_W;
-
             RetroDraw.PrintBig  (cx - titleW / 2, cy - 4,  "GAME OVER", sw, sh, Color.white);
             RetroDraw.PrintSmall(cx - hintW  / 2, cy - 16, HINT,        sw, sh, new Color(0.9f, 0.9f, 1f, 1));
             return;
@@ -195,10 +186,8 @@ public abstract class GameManager : MonoBehaviour
         {
             int titleW = "PAUSED".Length * BIG_W;
             int hintW  = HINT.Length * SMALL_W;
-
             RetroDraw.PrintBig  (cx - titleW / 2, cy - 4,  "PAUSED", sw, sh, new Color(1f, 1f, 0.8f, 1));
             RetroDraw.PrintSmall(cx - hintW  / 2, cy - 16, HINT,     sw, sh, new Color(0.85f, 0.9f, 1f, 1));
         }
     }
-
 }
