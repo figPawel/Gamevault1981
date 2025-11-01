@@ -14,6 +14,7 @@ using UnityEngine.Audio;
 
 [Flags] public enum GameFlags { Solo = 1, Versus2P = 2, Coop2P = 4, Alt2P = 8 }
 
+
 public class GameDef
 {
     public string id, title;

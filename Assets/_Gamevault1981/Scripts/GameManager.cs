@@ -1,5 +1,5 @@
 // === GameManager.cs — DROP-IN ===
-// Purged Legacy Input. Input System only. Provides A/Fire, Back, Pause helpers used across games.
+// Input System only. Centralizes Paused + GameOver overlays and controls.
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -8,19 +8,20 @@ public enum GameMode { Solo = 0, Versus2P = 1, Coop2P = 2, Alt2P = 3 }
 public abstract class GameManager : MonoBehaviour
 {
     public MetaGameManager meta;
-    public GameDef Def;
+    public GameDef  Def;
     public GameMode Mode;
 
-    public int ScoreP1, ScoreP2;
+    public int  ScoreP1, ScoreP2;
     public bool Running { get; protected set; }
 
     protected bool Paused;
+    bool _gameOver;
+
     float _pauseCooldown;
 
     bool _guiBackLatchDown, _guiBackLatchHeld;
     bool _guiALatchDown,    _guiALatchHeld;
 
-    // Games can consult this before playing their own chiptune music.
     protected bool AllowChiptuneNow => meta ? meta.AllowChiptuneNow() : true;
 
     public virtual void Begin() { }
@@ -32,7 +33,8 @@ public abstract class GameManager : MonoBehaviour
     {
         Mode = mode;
         Running = true;
-        Paused = false;
+        Paused  = false;
+        _gameOver = false;
         _pauseCooldown = 0f;
         OnStartMode();
     }
@@ -40,8 +42,18 @@ public abstract class GameManager : MonoBehaviour
     public virtual void QuitToMenu()
     {
         Running = false;
-        Paused = false;
+        Paused  = false;
+        _gameOver = false;
         if (meta) meta.QuitToSelection();
+    }
+
+    // ------ Central GAME OVER API ------
+    protected void GameOverNow()
+    {
+        if (_gameOver) return;
+        _gameOver = true;
+        Paused = false;               // cannot pause while game over
+        if (meta && meta.audioBus) meta.audioBus.BeepOnce(120f, 0.12f, 0.10f);
     }
 
     // ---------------- A / FIRE ----------------
@@ -50,9 +62,9 @@ public abstract class GameManager : MonoBehaviour
         var k = Keyboard.current; var g = Gamepad.current; var m = Mouse.current;
         bool kb = k != null && (
             k.spaceKey.isPressed || k.enterKey.isPressed ||
-            k.eKey.isPressed || k.rKey.isPressed ||
-            k.gKey.isPressed || k.hKey.isPressed ||
-            k.zKey.isPressed || k.xKey.isPressed ||
+            k.eKey.isPressed     || k.rKey.isPressed     ||
+            k.gKey.isPressed     || k.hKey.isPressed     ||
+            k.zKey.isPressed     || k.xKey.isPressed     ||
             k.leftCtrlKey.isPressed
         );
         bool ms = m != null && m.leftButton.isPressed;
@@ -69,9 +81,9 @@ public abstract class GameManager : MonoBehaviour
         var k = Keyboard.current; var g = Gamepad.current; var m = Mouse.current;
         bool kb = k != null && (
             k.spaceKey.wasPressedThisFrame || k.enterKey.wasPressedThisFrame ||
-            k.eKey.wasPressedThisFrame || k.rKey.wasPressedThisFrame ||
-            k.gKey.wasPressedThisFrame || k.hKey.wasPressedThisFrame ||
-            k.zKey.wasPressedThisFrame || k.xKey.wasPressedThisFrame ||
+            k.eKey.wasPressedThisFrame     || k.rKey.wasPressedThisFrame     ||
+            k.gKey.wasPressedThisFrame     || k.hKey.wasPressedThisFrame     ||
+            k.zKey.wasPressedThisFrame     || k.xKey.wasPressedThisFrame     ||
             k.leftCtrlKey.wasPressedThisFrame
         );
         bool ms = m != null && m.leftButton.wasPressedThisFrame;
@@ -124,13 +136,22 @@ public abstract class GameManager : MonoBehaviour
             || (g != null && (g.startButton.wasPressedThisFrame || g.selectButton.wasPressedThisFrame));
     }
 
-    // Call at TOP of each game’s Update()
+    // Call at TOP of each game’s Update(). Returns true if the game should early-out.
     protected bool HandleCommonPause()
     {
         if (!Running) return true;
 
+        // GAME OVER takes precedence, also handles "A = retry" universally.
+        if (_gameOver)
+        {
+            // No pausing during Game Over; allow instant retry on A.
+            if (BtnADown()) { _gameOver = false; Paused = false; OnStartMode(); }
+            return true;
+        }
+
         _pauseCooldown = Mathf.Max(0f, _pauseCooldown - Time.unscaledDeltaTime);
 
+        // Toggle pause (but only when not game over)
         if (_pauseCooldown <= 0f && PausePressed())
         {
             Paused = !Paused;
@@ -141,16 +162,38 @@ public abstract class GameManager : MonoBehaviour
         return Paused;
     }
 
+    // ---------- Shared HUD (score + centered overlays) ----------
     protected void DrawCommonHUD(int sw, int sh)
-    {
-        RetroDraw.PixelRect(2, sh - 11, 68, 9, sw, sh, new Color(0, 0, 0, 1f));
-        RetroDraw.PrintSmall(6, sh - 10, $"SCORE {ScoreP1:0000}", sw, sh, Color.white);
+{
+    // score (simple text, no box)
+    RetroDraw.PrintSmall(6, RetroDraw.ViewH - 10, $"SCORE {ScoreP1:0000}", sw, sh, Color.white);
 
-        if (Paused)
-        {
-            RetroDraw.PixelRect(sw / 2 - 50, sh / 2 - 16, 100, 32, sw, sh, new Color(0, 0, 0, 1f));
-            RetroDraw.PrintBig(sw / 2 - 36, sh / 2 - 4, "PAUSED", sw, sh, new Color(1, 1, 0.8f, 1));
-            RetroDraw.PrintSmall(sw / 2 - 56, sh / 2 - 14, "START/ESC = MENU", sw, sh, new Color(0.8f, 0.9f, 1f, 1));
-        }
+    int vw = RetroDraw.ViewW, vh = RetroDraw.ViewH;
+    const int BIG_W = 8;    // approx. glyph width for PrintBig
+    const int SMALL_W = 5;  // approx. glyph width for PrintSmall
+    const string HINT = "FIRE: CONTINUE  BACK: QUIT";
+
+    int cx = vw / 2;
+    int cy = vh / 2;
+
+    if (_gameOver)
+    {
+        int titleW = "GAME OVER".Length * BIG_W;
+        int hintW  = HINT.Length * SMALL_W;
+
+        RetroDraw.PrintBig  (cx - titleW / 2, cy - 4,  "GAME OVER", sw, sh, Color.white);
+        RetroDraw.PrintSmall(cx - hintW  / 2, cy - 16, HINT,        sw, sh, new Color(0.9f, 0.9f, 1f, 1));
+        return;
     }
+
+    if (Paused)
+    {
+        int titleW = "PAUSED".Length * BIG_W;
+        int hintW  = HINT.Length * SMALL_W;
+
+        RetroDraw.PrintBig  (cx - titleW / 2, cy - 4,  "PAUSED", sw, sh, new Color(1f, 1f, 0.8f, 1));
+        RetroDraw.PrintSmall(cx - hintW  / 2, cy - 16, HINT,     sw, sh, new Color(0.85f, 0.9f, 1f, 1));
+    }
+}
+
 }

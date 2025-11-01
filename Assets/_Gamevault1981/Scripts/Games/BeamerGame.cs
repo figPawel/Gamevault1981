@@ -6,25 +6,24 @@ public class BeamerGame : GameManager
     const int sw = 160, sh = 192;
 
     // World layout
-    const int groundY = 20;   // ground baseline
+    const int groundY = 20;
     float scroll = 28f;
 
     // Player (UFO)
     float px, py;
     float vy;
-    bool alive;
 
     // Beam/energy
     bool  beaming;
-    float energy;                  // 0..1
+    float energy;
     const float drainRate    = 0.55f;
     const float rechargeRate = 0.45f;
-    const float liftTarget   = 42f; // vertical speed target when beaming
+    const float liftTarget   = 42f;
     const float gravity      = 90f;
 
     // ----- scoring -----
-    float scoreAcc;                // accumulate fractional points here
-    const float scoreRate = 0.6f;  // pts per pixel of ground passed
+    float scoreAcc;
+    const float scoreRate = 0.6f;
 
     // Ground pads (good) + hazards (bad if beam touches)
     struct Pad     { public float x; public int w; }
@@ -43,14 +42,12 @@ public class BeamerGame : GameManager
         rng = new System.Random(1337);
         ScoreP1 = 0;
         scoreAcc = 0f;
-        alive   = true;
 
         // Start left-ish and low
         px = 26; py = 42; vy = 0;
         energy = 1f; beaming = false;
         scroll = 28f;
 
-        // Layout pads & hazards on the ground ahead
         float x = 60f;
         for (int i = 0; i < pads.Length; i++)
         {
@@ -77,7 +74,7 @@ public class BeamerGame : GameManager
 
     Jet NewJet(float startX)
     {
-        int band = rng.Next(0, 3); // 0 low, 1 mid, 2 high
+        int band = rng.Next(0, 3);
         float y = (band == 0) ? 52f : (band == 1 ? 74f : 102f);
         return new Jet { x = startX, y = y, speed = rng.Next(34, 52) };
     }
@@ -89,16 +86,10 @@ public class BeamerGame : GameManager
 
         float dt = Time.deltaTime;
 
-        if (!alive)
-        {
-            if (BtnADown()) Begin();
-            return;
-        }
-
         // ----- Input & energy -----
         beaming = energy > 0.02f && BtnA();
         if (beaming) energy = Mathf.Max(0f, energy - drainRate * dt);
-        else         energy = Mathf.Min(1f, energy + 0.12f * dt); // slow passive regen
+        else         energy = Mathf.Min(1f, energy + 0.12f * dt);
 
         // Anti-gravity vs gravity
         if (beaming) vy = Mathf.Lerp(vy, liftTarget, 8f * dt);
@@ -151,39 +142,31 @@ public class BeamerGame : GameManager
             }
         }
 
-        // ----- Scoring (accumulate fractional points, then add whole numbers) -----
+        // ----- Scoring -----
         scoreAcc += scroll * dt * scoreRate;
         int add = (int)scoreAcc;
-        if (add > 0)
-        {
-            ScoreP1 += add;
-            scoreAcc -= add;
-        }
+        if (add > 0) { ScoreP1 += add; scoreAcc -= add; }
 
-        if (overPad && energy > 0.95f) scroll = Mathf.Min(54f, scroll + 4f * dt); // gentle ramp
+        if (overPad && energy > 0.95f) scroll = Mathf.Min(54f, scroll + 4f * dt);
 
-        // ----- Failure conditions -----
+        // ----- Failure conditions (centralized call) -----
+        bool failed = false;
+
+        // Touch ground without beam
         bool grounded = py <= groundY + 6.01f;
-        if (grounded && !beaming) alive = false;
+        if (grounded && !beaming) failed = true;
 
-        // Beam sweeps a ground hazard
-        if (beaming)
-        {
+        // Beam hits a ground hazard
+        if (!failed && beaming)
             for (int i = 0; i < hazards.Length; i++)
-            {
-                if (Mathf.Abs(px - hazards[i].x) < hazards[i].w * 0.5f)
-                { alive = false; break; }
-            }
-        }
+                if (Mathf.Abs(px - hazards[i].x) < hazards[i].w * 0.5f) { failed = true; break; }
 
-        // Jet collision (UFO body)
-        for (int i = 0; i < jets.Length; i++)
-        {
-            if (Mathf.Abs(px - jets[i].x) < 7f && Mathf.Abs(py - jets[i].y) < 7f)
-            { alive = false; break; }
-        }
+        // Body hits a jet
+        if (!failed)
+            for (int i = 0; i < jets.Length; i++)
+                if (Mathf.Abs(px - jets[i].x) < 7f && Mathf.Abs(py - jets[i].y) < 7f) { failed = true; break; }
 
-        if (!alive && meta && meta.audioBus) meta.audioBus.BeepOnce(72, 0.12f, 0.10f);
+        if (failed) GameOverNow();
     }
 
     void OnGUI()
@@ -194,18 +177,18 @@ public class BeamerGame : GameManager
         int vw = RetroDraw.ViewW;
         int vh = RetroDraw.ViewH;
 
-        // ---- Sky & ground (full dynamic width) ----
-        RetroDraw.PixelRect(0, 0, vw, vh, sw, sh, new Color(0.18f,0.42f,0.95f,1));        // sky
-        RetroDraw.PixelRect(0, 0, vw, groundY, sw, sh, new Color(0.02f,0.14f,0.04f,1));   // ground fill
-        RetroDraw.PixelRect(0, groundY, vw, 4, sw, sh, new Color(0.05f,0.28f,0.08f,1));   // ground line
+        // ---- Sky & ground ----
+        RetroDraw.PixelRect(0, 0, vw, vh, sw, sh, new Color(0.18f,0.42f,0.95f,1));
+        RetroDraw.PixelRect(0, 0, vw, groundY, sw, sh, new Color(0.02f,0.14f,0.04f,1));
+        RetroDraw.PixelRect(0, groundY, vw, 4, sw, sh, new Color(0.05f,0.28f,0.08f,1));
 
-        // clouds (wrap across full dynamic width)
+        // clouds
         float t = Time.time * 10f;
         Cloud(( 10 + t*0.8f) % (vw + 50) - 25, 150, 28, 7, 0.5f);
         Cloud((100 + t*0.6f) % (vw + 70) - 35, 168, 34, 8, 0.4f);
         Cloud((170 + t*1.0f) % (vw + 60) - 30, 132, 24, 6, 0.6f);
 
-        // ---- Pads (good)
+        // pads
         for (int i = 0; i < pads.Length; i++)
         {
             int x = Mathf.RoundToInt(pads[i].x);
@@ -214,7 +197,7 @@ public class BeamerGame : GameManager
             RetroDraw.PixelRect(x - pads[i].w/2, groundY - 4, pads[i].w, 2, sw, sh, new Color(0.06f,0.65f,0.40f,1));
         }
 
-        // ---- Hazards (bad if beam touches)
+        // hazards
         for (int i = 0; i < hazards.Length; i++)
         {
             int x = Mathf.RoundToInt(hazards[i].x);
@@ -223,7 +206,7 @@ public class BeamerGame : GameManager
             RetroDraw.PixelRect(x - hazards[i].w/2, groundY - 6, hazards[i].w, 3, sw, sh, new Color(0.45f,0.06f,0.04f,1));
         }
 
-        // ---- Jets
+        // jets
         for (int i = 0; i < jets.Length; i++)
         {
             int x = Mathf.RoundToInt(jets[i].x);
@@ -233,7 +216,7 @@ public class BeamerGame : GameManager
             RetroDraw.PixelRect(x - 2, y,     4, 2,  sw, sh, new Color(0.25f,0.25f,0.30f,1));
         }
 
-        // ---- Beam then UFO
+        // beam
         if (beaming)
         {
             int top = Mathf.RoundToInt(py - 3);
@@ -245,6 +228,7 @@ public class BeamerGame : GameManager
             }
         }
 
+        // UFO
         int ux = Mathf.RoundToInt(px);
         int uy = Mathf.RoundToInt(py);
         RetroDraw.PixelRect(ux - 8, uy - 3, 16, 3, sw, sh, new Color(0.72f,0.86f,1f,1));
@@ -252,20 +236,12 @@ public class BeamerGame : GameManager
         RetroDraw.PixelRect(ux - 3, uy + 2,  6, 3, sw, sh, new Color(1f,0.95f,0.7f,1));
         RetroDraw.PixelRect(ux - 1, uy + 5,  2, 1, sw, sh, new Color(1f,1f,0.85f,1));
 
-        // Energy bar uses dynamic height/width
+        // energy bar
         RetroDraw.PixelRect(24, vh - 14, vw - 48, 6, sw, sh, new Color(0,0,0,0.55f));
         int ew = Mathf.RoundToInt((vw - 52) * Mathf.Clamp01(energy));
         RetroDraw.PixelRect(26, vh - 13, ew, 4, sw, sh, new Color(0.4f,1f,1f,1));
 
-        // Game over (centered)
-        if (!alive)
-        {
-            RetroDraw.PixelRect(vw/2 - 52, sh/2 - 20, 104, 40, sw, sh, new Color(0,0,0,0.75f));
-            RetroDraw.PrintBig  (vw/2 - 36, sh/2 - 4, "GAME OVER", sw, sh, Color.white);
-            RetroDraw.PrintSmall(vw/2 - 44, sh/2 - 14, "A: RETRY   Back: MENU", sw, sh, new Color(0.9f,0.9f,1f,1));
- 
-        }
-
+        // common HUD (score + overlays)
         DrawCommonHUD(sw, sh);
     }
 

@@ -490,7 +490,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.05
-  far clip plane: 260
+  far clip plane: 516
   field of view: 60
   orthographic: 0
   orthographic size: 5
@@ -517,8 +517,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.1010563, y: 0, z: 0, w: 0.99488074}
-  m_LocalPosition: {x: 0, y: 6, z: 0}
+  m_LocalRotation: {x: 0.18823846, y: 0, z: 0, w: 0.9821234}
+  m_LocalPosition: {x: 0, y: 20.97, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2261,40 +2261,31 @@ MonoBehaviour:
   m_GameObject: {fileID: 983812303}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f5646d549730bd44cbb18c4f099286f7, type: 3}
+  m_Script: {fileID: 11500000, guid: 1c6ec5e46fa94fb4db0ce93ecac99eff, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MenuGridController
   targetCamera: {fileID: 330585545}
-  cameraHeight: 6
-  cameraTilt: 11.6
-  horizonDistance: 130
-  autoAlignHorizon: 0
+  cameraHeight: 20.97
+  cameraTilt: 21.7
+  horizonDistance: 258
+  autoAlignHorizon: 1
   horizonGap: 2
-  cellsX: 12
+  cellsX: 24
   cellsZVisible: 64
-  cellSize: 2
-  scrollSpeed: 4
-  lineWidth: 0.1
+  cellSize: 4
+  scrollSpeed: 30
+  lineWidth: 0.05
   squeezeAmount: 1
-  squeezeExponent: 2
-  hueScroll: 0.1
-  saturation: 0.783
-  value: 1.026
-  glow: 3.09
+  squeezeExponent: 2.94
+  hueScroll: 0.5
+  saturation: 0.872
+  value: 1
+  glow: 3.42
   showVault: 0
-  vaultRadius: 1
+  vaultRadius: 0.9
   vaultPulse: 1.5
-  vaultLightRange: 17.48
-  vaultLightIntensity: 1
-  cartridgePrefab: {fileID: 0}
-  cartridgesToShow: 12
-  cartRowMin: 6
-  cartRowMax: 36
-  cartJitterFrac: 0.12
-  cartHeight: 0.02
-  cartYawOnly: 1
-  cartPitch: -10
-  cartRoll: 0
+  vaultLightRange: 18
+  vaultLightIntensity: 3
 --- !u!4 &983812305
 Transform:
   m_ObjectHideFlags: 0
@@ -2411,16 +2402,11 @@ MonoBehaviour:
   ShowLockedBands: 1
   AlwaysUnlockedFirstN: 20
   serverTimeOffsetSeconds: 0
-  hoursBetweenUnlocks: 24
-  gamesPerInterval: 1
-  scorePerUnlock: 20000
-  gamesPerUnlock: 1
   mixer: {fileID: 24100000, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
   mixerMusicGroup: {fileID: 1653838731606186422, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
   mixerSfxGroup: {fileID: 6751983027299263829, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
   musicVolumeParam: MusicVolDb
   sfxVolumeParam: SfxVolDb
-  scoreTallySfx: {fileID: 0}
   audioBus: {fileID: 0}
   PreloadTracksOnSelection: 1
 --- !u!82 &998324368
@@ -4754,8 +4740,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UIManager
   titleRoot: {fileID: 534176128}
-  btnPlay: {fileID: 1910623094}
-  btnOptions: {fileID: 0}
+  btnGameSelection: {fileID: 1910623094}
   btnQuit: {fileID: 1285107775}
   selectRoot: {fileID: 115637327}
   listRoot: {fileID: 1190183738}
@@ -4766,9 +4751,6 @@ MonoBehaviour:
   selectScroll: {fileID: 1520795940}
   selectViewport: {fileID: 348020725}
   Viewportpad: 6
-  totalScoreText: {fileID: 1375915047}
-  bannerPrefab: {fileID: 7919669846977238603, guid: d720fc236ba120a4f9be600084442c77, type: 3}
-  bannerAutoHideSeconds: 0
   inGameMenuRoot: {fileID: 993571407}
   btnInGameSolo: {fileID: 714822270}
   btnInGameVs: {fileID: 1242077379}
@@ -4785,15 +4767,6 @@ MonoBehaviour:
   AutoEdgeFactor: 0.5
   TopEdgeMargin: 0
   BottomEdgeMargin: 0
-  crtEffectRoot: {fileID: 0}
-  optionsToast: {fileID: 0}
-  uiSfxSource: {fileID: 998324368}
-  sfxSelect: {fileID: 8300000, guid: 32d4b1811dda14a6cb9e059ee8ad17d2, type: 3}
-  sfxConfirm: {fileID: 8300000, guid: 32d4b1811dda14a6cb9e059ee8ad17d2, type: 3}
-  sfxDeny: {fileID: 8300000, guid: 724131bc8a7f34041bb9f1701f0cb58d, type: 3}
-  sfxBanner: {fileID: 8300000, guid: 7478151cf36724a7dada558f746c3633, type: 3}
-  sfxScoreTick: {fileID: 8300000, guid: 19f89c6e740e7447f9e12a8310d3e973, type: 3}
-  sfxScoreDone: {fileID: 8300000, guid: b99da9a57308d4ba1bee1cf1d9038376, type: 3}
 --- !u!114 &2057897086
 MonoBehaviour:
   m_ObjectHideFlags: 0

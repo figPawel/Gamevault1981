@@ -60,7 +60,6 @@ public class Options : MonoBehaviour
         // Apply initial state
         MetaGameManager.I?.SetMusicVolumeLinear(_musicVol);
         MetaGameManager.I?.SetSfxVolumeLinear(_sfxVol);
-
     }
 
     void Start()
@@ -138,7 +137,7 @@ public class Options : MonoBehaviour
             PlayerPrefs.SetFloat("opt_sfx", _sfxVol);
             MetaGameManager.I?.SetSfxVolumeLinear(_sfxVol);
         });
-   
+
         // SOUNDTRACK ROUTING
         AddToggleRow("Play soundtrack on Selection", () => _playOnSelection, on => { _playOnSelection = on; PlayerPrefs.SetInt("msk_sel", on?1:0); });
         AddToggleRow("Play soundtrack on Title",     () => _playOnTitle,     on => { _playOnTitle = on; PlayerPrefs.SetInt("msk_title", on?1:0); });
@@ -152,12 +151,10 @@ public class Options : MonoBehaviour
         // INPUT
         AddToggleRow("Invert Y — Player 1", () => _invertY1, on => { _invertY1 = on; PlayerPrefs.SetInt("invY1", on?1:0); });
         AddToggleRow("Invert Y — Player 2", () => _invertY2, on => { _invertY2 = on; PlayerPrefs.SetInt("invY2", on?1:0); });
-        AddChoiceRow("Player 1 device", _deviceChoices.ToArray(),
-            () => _mapP1,
-            i => { _mapP1 = ClampChoice(i); ResolveConflict(pushOther: 2); PlayerPrefs.SetInt("map_p1", _mapP1); });
-        AddChoiceRow("Player 2 device", _deviceChoices.ToArray(),
-            () => _mapP2,
-            i => { _mapP2 = ClampChoice(i); ResolveConflict(pushOther: 1); PlayerPrefs.SetInt("map_p2", _mapP2); });
+
+        // Device rows that SKIP the other player's current device while cycling
+        AddPlayerDeviceRow("Player 1 device", 1);
+        AddPlayerDeviceRow("Player 2 device", 2);
 
         WireNavigation();
         _built = true;
@@ -255,6 +252,7 @@ public class Options : MonoBehaviour
     }
 
     // When one side picks a device that's already taken, push the other forward to a free slot.
+    // (Still useful for hotplug or list shrink; normal cycling now skips the conflict.)
     void ResolveConflict(int pushOther)
     {
         if (_deviceChoices.Count <= 1) return;
@@ -393,5 +391,65 @@ public class Options : MonoBehaviour
             if (b && b.bandButton && b.gameObject.activeInHierarchy)
                 return b.bandButton;
         return null;
+    }
+
+    // ---------- Player device rows (skip the other player's choice) ----------
+    void AddPlayerDeviceRow(string label, int playerIndex)
+    {
+        string Value()
+        {
+            int idx = playerIndex == 1 ? _mapP1 : _mapP2;
+            if (_deviceChoices.Count == 0) return "-";
+            idx = ClampChoice(idx);
+            return _deviceChoices[idx];
+        }
+
+        int OtherMap() => playerIndex == 1 ? _mapP2 : _mapP1;
+        int ThisMap()  => playerIndex == 1 ? _mapP1 : _mapP2;
+
+        // Find next free device index skipping the other player's current device.
+        int NextFreeFrom(int current, int dir, int other)
+        {
+            int count = _deviceChoices.Count;
+            if (count <= 1) return current; // nothing to change or forced share
+            int i = current;
+            for (int step = 0; step < count; step++)
+            {
+                i = ClampChoice(i + dir);
+                if (i != other) return i;
+            }
+            return current; // fallback (e.g., only one free slot)
+        }
+
+        void SetThis(int idx)
+        {
+            idx = ClampChoice(idx);
+            if (playerIndex == 1)
+            {
+                _mapP1 = idx;
+                PlayerPrefs.SetInt("map_p1", _mapP1);
+            }
+            else
+            {
+                _mapP2 = idx;
+                PlayerPrefs.SetInt("map_p2", _mapP2);
+            }
+        }
+
+        void Left()
+        {
+            int next = NextFreeFrom(ThisMap(), -1, OtherMap());
+            SetThis(next);
+            RefreshLast();
+        }
+
+        void Right()
+        {
+            int next = NextFreeFrom(ThisMap(), +1, OtherMap());
+            SetThis(next);
+            RefreshLast();
+        }
+
+        MakeRow(label, Value, Left, Right);
     }
 }

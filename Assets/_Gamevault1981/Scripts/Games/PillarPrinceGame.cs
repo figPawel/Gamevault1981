@@ -5,30 +5,29 @@ public class PillarPrinceGame : GameManager
     const int sw = 160, sh = 192;
 
     // World layout
-    const float platformY = 92f; // y of pillar caps
-    const int   capH      = 4;   // cap thickness
+    const float platformY = 92f;
+    const int   capH      = 4;
     float camX;
 
     struct Pillar { public float x; public int w; }
     Pillar[] pillars = new Pillar[7];
     System.Random rng;
 
-    // Player FEET position sits ON the cap (so he stands on top)
+    // Player FEET position sits ON the cap
     float px, py;
-    bool grounded, alive, dashing;
+    bool grounded, dashing;
 
     // Dash
     float charge, dashLeft;
     const float dashSpeed = 140f;
-    int onIndex;
-    bool eatAUntilReleased;
+    int   onIndex;
+    bool  eatAUntilReleased;
     float legAnim;
 
     public override void Begin()
     {
         rng = new System.Random(1981);
 
-        // Lay pillars to the right
         float x = 28f;
         for (int i = 0; i < pillars.Length; i++)
         {
@@ -39,13 +38,13 @@ public class PillarPrinceGame : GameManager
 
         onIndex  = 0;
         px       = pillars[0].x;
-        py       = platformY + capH; // FEET on cap
-        grounded = true; alive = true; dashing = false;
+        py       = platformY + capH;
+        grounded = true; dashing = false;
         charge   = 0f; dashLeft = 0f; legAnim = 0f;
         ScoreP1  = 0;
         camX     = 0f;
 
-        eatAUntilReleased = BtnA(); // avoid auto-dash if A was held when you died
+        eatAUntilReleased = BtnA(); // avoid auto-dash on retry if A held
     }
 
     public override void OnStartMode() { Begin(); }
@@ -56,13 +55,6 @@ public class PillarPrinceGame : GameManager
         if (HandleCommonPause()) return;
 
         float dt = Time.deltaTime;
-
-        if (!alive)
-        {
-            if (BtnADown()) Begin();
-
-            return;
-        }
 
         if (eatAUntilReleased && !BtnA()) eatAUntilReleased = false;
 
@@ -75,7 +67,7 @@ public class PillarPrinceGame : GameManager
             }
             else if (charge > 0f) // release starts dash
             {
-                dashLeft = Mathf.Lerp(18f, 110f, charge); // distance tuning
+                dashLeft = Mathf.Lerp(18f, 110f, charge);
                 dashing  = true;
                 grounded = false;
                 onIndex  = -1;
@@ -134,19 +126,18 @@ public class PillarPrinceGame : GameManager
                 }
                 else
                 {
-                    alive = false;
-                    if (meta && meta.audioBus) meta.audioBus.BeepOnce(120f, 0.12f, 0.10f);
+                    GameOverNow(); // centralized
                 }
             }
         }
 
-        // Camera follow after pillar #1 so you can see what's next
+        // Feet stay on the cap plane
+        py = platformY + capH;
+
+        // Camera follow
         float targetCam = Mathf.Max(0f, px - RetroDraw.ViewW * 0.33f);
         float followLerp = (onIndex >= 1) ? 10f : 4f;
         camX = Mathf.Lerp(camX, targetCam, followLerp * Time.deltaTime);
-
-        // Feet stay on the cap plane
-        py = platformY + capH;
     }
 
     // --- tiny helper for clouds ---
@@ -154,26 +145,25 @@ public class PillarPrinceGame : GameManager
     {
         int sx = Mathf.RoundToInt(wx - camX * parallax);
         RetroDraw.PixelRect(sx, wy, w, h, sw, sh, new Color(1f, 1f, 1f, 0.85f));
-        RetroDraw.PixelRect(sx + 3, wy + h, w - 6, 2, sw, sh, new Color(1f, 1f, 1f, 0.70f));
+        RetroDraw.PixelRect(sx + 3, wy + h, Mathf.Max(2, w - 6), 2, sw, sh, new Color(1f, 1f, 1f, 0.70f));
     }
 
     void OnGUI()
     {
         if (!Running) return;
 
-        // Dynamic view (no bars, no crop, just more world)
         RetroDraw.Begin(sw, sh);
         int vw = RetroDraw.ViewW;
         int vh = RetroDraw.ViewH;
 
-        // ---- Full blue sky ----
+        // ---- Sky ----
         RetroDraw.PixelRect(0, 0, vw, vh, sw, sh, new Color(0.29f, 0.52f, 0.96f, 1));
 
-        // Clouds (wrap across full dynamic width)
+        // Clouds (soft parallax)
         float t = Time.time * 8f;
-        Cloud(( 20 + t) % (vw + 60) - 30, 150, 28, 6, 0.4f);
-        Cloud((100 + t*0.7f) % (vw + 80) - 40, 138, 34, 7, 0.5f);
-        Cloud((170 + t*1.1f) % (vw + 50) - 25, 160, 22, 5, 0.35f);
+        Cloud(( 20 + t) % (vw + 60) - 30, 150, 28, 6, 0.40f);
+        Cloud((100 + t * 0.7f) % (vw + 80) - 40, 138, 34, 7, 0.50f);
+        Cloud((170 + t * 1.1f) % (vw + 50) - 25, 160, 22, 5, 0.35f);
 
         // ---- Pillars (tall columns with bright caps) ----
         for (int i = 0; i < pillars.Length; i++)
@@ -182,40 +172,39 @@ public class PillarPrinceGame : GameManager
             int w  = pillars[i].w;
             if (sx + w < -20 || sx - w > vw + 20) continue;
 
-            var col = new Color(0.08f, 0.44f, 0.35f, 1);
-            RetroDraw.PixelRect(sx - w/2, 0, w, (int)platformY, sw, sh, col);
+            var trunk = new Color(0.08f, 0.44f, 0.35f, 1);
+            RetroDraw.PixelRect(sx - w/2, 0, w, (int)platformY, sw, sh, trunk);
+
             var cap = new Color(0.20f, 0.95f, 0.70f, 1);
             RetroDraw.PixelRect(sx - w/2, (int)platformY, w, capH, sw, sh, cap);
-            RetroDraw.PixelRect(sx - w/2, (int)platformY + capH - 1, w, 1, sw, sh, new Color(0.9f,1f,0.95f,0.6f));
+            RetroDraw.PixelRect(sx - w/2, (int)platformY + capH - 1, w, 1, sw, sh, new Color(0.9f, 1f, 0.95f, 0.6f));
         }
 
-        // ---- Player sprite (FEET at py; draw up) ----
-        int ix = Mathf.RoundToInt(px - camX), iy = Mathf.RoundToInt(py);
-        int swing = dashing ? (int)(Mathf.Sin(legAnim) * 2f) : 0;
-        RetroDraw.PixelRect(ix - 3, iy - 1, 6, 1, sw, sh, new Color(0,0,0,0.25f));                // feet shadow
-        RetroDraw.PixelRect(ix - 3 - swing, iy - 8, 2, 8, sw, sh, new Color(0.18f,0.75f,0.40f,1)); // leg L
-        RetroDraw.PixelRect(ix + 1 + swing, iy - 8, 2, 8, sw, sh, new Color(0.18f,0.75f,0.40f,1)); // leg R
-        RetroDraw.PixelRect(ix - 2, iy + 0, 4, 6, sw, sh, new Color(0.98f,0.82f,0.28f,1));         // torso
-        RetroDraw.PixelRect(ix + 2, iy + 2, 2, 2, sw, sh, new Color(0.98f,0.93f,0.83f,1));         // arm
-        RetroDraw.PixelRect(ix - 2, iy + 6, 4, 4, sw, sh, new Color(0.98f,0.93f,0.83f,1));         // head
-        RetroDraw.PixelRect(ix - 3, iy + 10, 6, 1, sw, sh, new Color(1f,0.76f,0.2f,1));            // crown
+        // ---- Prince ----
+        int ix = Mathf.RoundToInt(px - camX);
+        int iy = Mathf.RoundToInt(py);
+        int swing = Mathf.RoundToInt(Mathf.Sin(legAnim * 0.25f) * 2f);
 
-        // ---- Charge meter uses dynamic width ----
-        RetroDraw.PixelRect(20, 10, vw - 40, 6, sw, sh, new Color(0,0,0,0.55f));
+        // Feet shadow
+        RetroDraw.PixelRect(ix - 3, iy - 1, 6, 1, sw, sh, new Color(0, 0, 0, 0.25f));
+
+        // Legs / body / head / crown
+        RetroDraw.PixelRect(ix - 1 - swing, iy - 8, 2, 8, sw, sh, new Color(0.18f, 0.75f, 0.40f, 1)); // leg L
+        RetroDraw.PixelRect(ix + 1 + swing, iy - 8, 2, 8, sw, sh, new Color(0.18f, 0.75f, 0.40f, 1)); // leg R
+        RetroDraw.PixelRect(ix - 2, iy + 0, 4, 6, sw, sh, new Color(0.98f, 0.82f, 0.28f, 1));         // torso
+        RetroDraw.PixelRect(ix + 2, iy + 2, 2, 2, sw, sh, new Color(0.98f, 0.93f, 0.83f, 1));         // arm
+        RetroDraw.PixelRect(ix - 2, iy + 6, 4, 4, sw, sh, new Color(0.98f, 0.93f, 0.83f, 1));         // head
+        RetroDraw.PixelRect(ix - 3, iy + 10, 6, 1, sw, sh, new Color(1f, 0.76f, 0.2f, 1));            // crown
+
+        // ---- Charge meter (top) ----
+        RetroDraw.PixelRect(20, 10, vw - 40, 6, sw, sh, new Color(0, 0, 0, 0.55f));
         if (grounded && !dashing)
         {
             int fill = Mathf.RoundToInt((vw - 44) * charge);
-            RetroDraw.PixelRect(22, 11, fill, 4, sw, sh, new Color(1f,0.56f,0.22f,1));
+            RetroDraw.PixelRect(22, 11, fill, 4, sw, sh, new Color(1f, 0.56f, 0.22f, 1));
         }
 
-        // ---- Game over card, centered in dynamic width ----
-        if (!alive)
-        {
-            RetroDraw.PixelRect(vw/2 - 50, sh/2 - 18, 100, 36, sw, sh, new Color(0,0,0,0.85f));
-            RetroDraw.PrintBig  (vw/2 - 30, sh/2 - 4, "YOU FELL", sw, sh, Color.white);
-            RetroDraw.PrintSmall(vw/2 - 55, sh/2 - 14, "A: RETRY    Back: MENU", sw, sh, new Color(0.85f,0.9f,1f,1));
-        }
-
+        // Shared HUD overlays (score + centered PAUSED/GAME OVER + hint line)
         DrawCommonHUD(sw, sh);
     }
 }
