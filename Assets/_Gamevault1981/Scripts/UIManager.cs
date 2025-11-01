@@ -9,7 +9,7 @@ public class UIManager : MonoBehaviour
     [Header("Title")]
     public CanvasGroup titleRoot;
     public Button btnGameSelection;
-
+    public Button btnOptions;
     public Button btnQuit;
 
     [Header("Selection")]
@@ -47,6 +47,15 @@ public class UIManager : MonoBehaviour
     public float TopEdgeMargin = 0f;
     public float BottomEdgeMargin = 0f;
 
+    [Header("Selection: Main Score")]
+    public TMP_Text mainScoreText;                 // place under the logo on Selection
+    [Tooltip("Units per second for the main score count-up.")]
+    public float mainScoreCountSpeed = 600f;
+    [Tooltip("Beep frequency for each tick (0 = silent).")]
+    public float mainScoreTickHz = 660f;
+    [Tooltip("Beep frequency when finishing (0 = silent).")]
+    public float mainScoreFinishHz = 880f;
+
     MetaGameManager _meta;
     readonly List<GameObject> _bands = new List<GameObject>();
 
@@ -61,13 +70,21 @@ public class UIManager : MonoBehaviour
     RectTransform _spacerTop, _spacerBottom;
     bool _builtList = false;
 
+    // Selection beep for any focused control
+    GameObject _lastSel;
+
+    // Main score count-up state
+    bool  _mainCounting;
+    int   _mainFrom, _mainTo;
+    float _mainCurrent;
+    int   _mainShown = -1;
+
     void Awake()
     {
         _musicVol = PlayerPrefs.GetFloat("opt_music", 0.8f);
         _sfxVol = PlayerPrefs.GetFloat("opt_sfx", 1.0f);
         AudioListener.volume = _musicVol;
         RetroAudio.GlobalSfxVolume = _sfxVol;
-       
     }
 
     void Start()
@@ -83,7 +100,29 @@ public class UIManager : MonoBehaviour
 
     void Update()
     {
-      
+        // --- animate main score payout
+        if (_mainCounting)
+        {
+            float step = Mathf.Max(1f, mainScoreCountSpeed) * Time.unscaledDeltaTime;
+            _mainCurrent = Mathf.Min(_mainCurrent + step, _mainTo);
+            int disp = Mathf.FloorToInt(_mainCurrent);
+
+            if (disp != _mainShown)
+            {
+                _mainShown = disp;
+                if (mainScoreText) mainScoreText.text = _mainShown.ToString("N0");
+                if (_meta && _meta.audioBus && mainScoreTickHz > 0f)
+                    _meta.audioBus.BeepOnce(mainScoreTickHz, 0.015f, 0.09f);
+            }
+
+            if (Mathf.Approximately(_mainCurrent, _mainTo))
+            {
+                _mainCounting = false;
+                if (mainScoreText) mainScoreText.text = _mainTo.ToString("N0");
+                if (_meta && _meta.audioBus && mainScoreFinishHz > 0f)
+                    _meta.audioBus.BeepOnce(mainScoreFinishHz, 0.10f, 0.25f);
+            }
+        }
 
         // -------- Unified input routing (Back & Pause) --------
         bool backDown = false, backHeld = false, pauseDown = false;
@@ -128,26 +167,36 @@ public class UIManager : MonoBehaviour
         // Keep viewport pinned to top when a header button is focused
         if (selectRoot && selectRoot.interactable && selectScroll)
         {
-            var es = EventSystem.current;
-            var sel = es ? es.currentSelectedGameObject : null;
-            if (sel &&
-                ((btnTopLeaderboards && sel == btnTopLeaderboards.gameObject) ||
-                 (btnTopOptions && sel == btnTopOptions.gameObject) ||
-                 (btnBackFromSelect && sel == btnBackFromSelect.gameObject)))
+            var es0 = EventSystem.current;
+            var sel0 = es0 ? es0.currentSelectedGameObject : null;
+            if (sel0 &&
+                ((btnTopLeaderboards && sel0 == btnTopLeaderboards.gameObject) ||
+                 (btnTopOptions && sel0 == btnTopOptions.gameObject) ||
+                 (btnBackFromSelect && sel0 == btnBackFromSelect.gameObject)))
             {
                 selectScroll.verticalNormalizedPosition = 1f;
             }
         }
         if (TitleActive())
         {
-            var es = EventSystem.current;
-            if (es && (!es.currentSelectedGameObject || !es.currentSelectedGameObject.activeInHierarchy))
+            var es1 = EventSystem.current;
+            if (es1 && (!es1.currentSelectedGameObject || !es1.currentSelectedGameObject.activeInHierarchy))
             {
                 var first = FirstTitleButton();
-                if (first) es.SetSelectedGameObject(first.gameObject);
+                if (first) es1.SetSelectedGameObject(first.gameObject);
             }
         }
         StickyFocusGuard();
+
+        // --- selection beep for any newly focused selectable
+        var es = EventSystem.current;
+        var cur = es ? es.currentSelectedGameObject : null;
+        if (cur != null && cur != _lastSel)
+        {
+            _lastSel = cur;
+            if (_meta && _meta.audioBus) _meta.audioBus.BeepOnce(520f, 0.02f, 0.08f);
+        }
+        if (cur == null) _lastSel = null;
     }
 
     public void Init(MetaGameManager meta)
@@ -155,9 +204,8 @@ public class UIManager : MonoBehaviour
         _meta = meta;
 
         if (btnGameSelection)    btnGameSelection.onClick.AddListener(_meta.OpenSelection);
-        if (btnQuit)    btnQuit.onClick.AddListener(_meta.QuitApp);
-    
-        if (btnBackFromSelect) btnBackFromSelect.onClick.AddListener(_meta.OpenTitle);
+        if (btnQuit)             btnQuit.onClick.AddListener(_meta.QuitApp);
+        if (btnBackFromSelect)   btnBackFromSelect.onClick.AddListener(_meta.OpenTitle);
 
         ShowTitle(false);
         ShowSelect(false);
@@ -171,7 +219,7 @@ public class UIManager : MonoBehaviour
 
         if (on)
         {
-            if (selectRoot)   { selectRoot.interactable = false;   selectRoot.blocksRaycasts = false; }
+            if (selectRoot)    { selectRoot.interactable = false;   selectRoot.blocksRaycasts = false; }
             if (inGameMenuRoot){ inGameMenuRoot.interactable = false; inGameMenuRoot.blocksRaycasts = false; }
         }
 
@@ -196,12 +244,19 @@ public class UIManager : MonoBehaviour
         selectRoot.interactable = on;
         selectRoot.blocksRaycasts = on;
 
-        if (on && _bands.Count > 0)
+        if (on)
         {
-            var firstBtn = _bands[0].GetComponentInChildren<Button>();
-            if (firstBtn) EventSystem.current?.SetSelectedGameObject(firstBtn.gameObject);
-            if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
-            ScrollToBand(_bands[0].GetComponent<UISelectBand>()?.Rect);
+            if (_bands.Count > 0)
+            {
+                var firstBtn = _bands[0].GetComponentInChildren<Button>();
+                if (firstBtn) EventSystem.current?.SetSelectedGameObject(firstBtn.gameObject);
+                if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+                ScrollToBand(_bands[0].GetComponent<UISelectBand>()?.Rect);
+            }
+
+            // ensure main score text shows current value if no payout running
+            if (!_mainCounting && mainScoreText && _meta != null)
+                mainScoreText.text = _meta.MainScore.ToString("N0");
         }
     }
 
@@ -380,7 +435,7 @@ public class UIManager : MonoBehaviour
             if (band && band.bandButton) bandButtons.Add(band.bandButton);
         }
 
-Button topMid = btnBackFromSelect ?? btnTopLeaderboards ?? btnTopOptions;
+        Button topMid = btnBackFromSelect ?? btnTopLeaderboards ?? btnTopOptions;
 
         for (int i = 0; i < bandButtons.Count; i++)
         {
@@ -439,8 +494,6 @@ Button topMid = btnBackFromSelect ?? btnTopLeaderboards ?? btnTopOptions;
 
         PlayerPrefs.SetFloat("opt_music", _musicVol);
         PlayerPrefs.SetFloat("opt_sfx", _sfxVol);
-
-    
     }
 
     bool SelectionActive() =>
@@ -523,7 +576,7 @@ Button topMid = btnBackFromSelect ?? btnTopLeaderboards ?? btnTopOptions;
     {
         var list = new List<Button>();
         if (btnGameSelection)  list.Add(btnGameSelection);
-        if (btnQuit)  list.Add(btnQuit);
+        if (btnQuit)           list.Add(btnQuit);
 
         if (list.Count == 0) return;
 
@@ -540,7 +593,7 @@ Button topMid = btnBackFromSelect ?? btnTopLeaderboards ?? btnTopOptions;
     Button FirstTitleButton()
     {
         if (btnGameSelection) return btnGameSelection;
-
+        if (btnOptions) return btnOptions;
         if (btnQuit) return btnQuit;
         return null;
     }
@@ -600,5 +653,24 @@ Button topMid = btnBackFromSelect ?? btnTopLeaderboards ?? btnTopOptions;
         }
     }
 
+    // ---------- Public helpers ----------
+    public void BeginMainScoreCount(int from, int to)
+    {
+        if (!mainScoreText) return;
+        _mainFrom = Mathf.Max(0, from);
+        _mainTo   = Mathf.Max(_mainFrom, to);
+        _mainCurrent = _mainFrom;
+        _mainShown = -1;
+        _mainCounting = (_mainTo > _mainFrom);
+        mainScoreText.text = _mainFrom.ToString("N0");
+    }
 
+    public void RefreshBandStats()
+    {
+        for (int i = 0; i < _bands.Count; i++)
+        {
+            var band = _bands[i] ? _bands[i].GetComponent<UISelectBand>() : null;
+            if (band) band.RefreshStats();
+        }
+    }
 }

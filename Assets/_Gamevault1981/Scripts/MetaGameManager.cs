@@ -14,7 +14,6 @@ using UnityEngine.Audio;
 
 [Flags] public enum GameFlags { Solo = 1, Versus2P = 2, Coop2P = 4, Alt2P = 8 }
 
-
 public class GameDef
 {
     public string id, title;
@@ -85,6 +84,11 @@ public class MetaGameManager : MonoBehaviour
     [Header("Soundtrack Preload")]
     public bool PreloadTracksOnSelection = true;
 
+    // ---------- Meta Scores ----------
+    int _sessionScore = 0;                   // accumulates across many runs until we return to Selection
+    int _mainScore = 0;                      // persistent, shown under logo on Selection
+    public int MainScore => _mainScore;      // read-only for UI
+
     public DateTime NowUtc => DateTime.UtcNow.AddSeconds(serverTimeOffsetSeconds);
 
     void Awake()
@@ -121,9 +125,12 @@ public class MetaGameManager : MonoBehaviour
         RetroAudio.GlobalSfxVolume = PlayerPrefs.GetFloat("opt_sfx", 1.0f);
         ApplyVolumesFromPrefs();
 
+        // Load persistent main score
+        _mainScore = PlayerPrefs.GetInt("main_score", 0);
+
         BuildGameList();
         if (ui) ui.Init(this);
-        ui?.BindSelection(Games); 
+        ui?.BindSelection(Games);
         OpenTitle();
     }
 
@@ -184,15 +191,12 @@ public class MetaGameManager : MonoBehaviour
             return sb.ToString();
         }
 
-
         System.Type beamer       = typeof(BeamerGame);
         System.Type pillarprince = typeof(PillarPrinceGame);
-       
 
         var implMap = new Dictionary<string, System.Type>
         {
-            { "beamer", beamer }, { "pillarprince", pillarprince }, 
-      
+            { "beamer", beamer }, { "pillarprince", pillarprince },
         };
 
         foreach (var e in cat.games)
@@ -285,7 +289,20 @@ public class MetaGameManager : MonoBehaviour
         ui?.ShowInGameMenu(false);
         ui?.BindSelection(Games);
         ui?.ShowTitle(false);
+
+        // --- Cash out the session into main score, then animate count-up on Selection
+        int from = _mainScore;
+        if (_sessionScore > 0)
+        {
+            _mainScore += _sessionScore;
+            _sessionScore = 0;
+            PlayerPrefs.SetInt("main_score", _mainScore);
+            PlayerPrefs.Save();
+        }
+
         ui?.ShowSelect(true);
+        ui?.RefreshBandStats();                // update highs on already-built bands
+        ui?.BeginMainScoreCount(from, _mainScore); // animate count-up under the logo
 
         bool playPerGame = PlayerPrefs.GetInt("msk_sel", 1) != 0;
         if (playPerGame) StopMusic();
@@ -465,5 +482,31 @@ public class MetaGameManager : MonoBehaviour
         bool allowChip = PlayerPrefs.GetInt("chip_ingame", 1) != 0;   // default ON
         bool modernInGame = PlayerPrefs.GetInt("msk_game", 0) != 0;   // modern soundtrack preference
         return allowChip && !modernInGame;
+    }
+
+    // ---------- Session / High score API ----------
+    public void ReportRun(GameDef def, GameMode mode, int scoreP1, int scoreP2)
+    {
+        int add = Mathf.Max(0, scoreP1) + Mathf.Max(0, scoreP2);
+        _sessionScore += add;
+
+        if (def == null) return;
+        string id = def.id ?? "";
+
+        // Update per-game highs
+        if (mode == GameMode.Solo)
+        {
+            string k = $"hi1p_{id}";
+            int cur = PlayerPrefs.GetInt(k, 0);
+            if (scoreP1 > cur) PlayerPrefs.SetInt(k, scoreP1);
+        }
+        else
+        {
+            int sum2 = Mathf.Max(0, scoreP1) + Mathf.Max(0, scoreP2);
+            string k = $"hi2p_{id}";
+            int cur = PlayerPrefs.GetInt(k, 0);
+            if (sum2 > cur) PlayerPrefs.SetInt(k, sum2);
+        }
+        PlayerPrefs.Save();
     }
 }

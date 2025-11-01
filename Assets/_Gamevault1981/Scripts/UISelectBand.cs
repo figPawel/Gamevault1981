@@ -30,8 +30,8 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     public TMP_Text unlockCountdownText;
 
     [Header("Hide When Locked")]
-[Tooltip("Drag anything you want hidden while locked (title/desc/modes/stats/PLAY containers, etc.).")]
-public GameObject[] hideWhenLocked;
+    [Tooltip("Drag anything you want hidden while locked (title/desc/modes/stats/PLAY containers, etc.).")]
+    public GameObject[] hideWhenLocked;
 
     [Header("Label loading (StreamingAssets)")]
     [SerializeField] string labelsFolder = "labels";                 // StreamingAssets/labels/<id or title>.(png|jpg|jpeg)
@@ -71,7 +71,6 @@ public GameObject[] hideWhenLocked;
         SafeSet(titleText,  def.title);
         SafeSet(descText,   def.desc);
         SafeSet(modesText,  Modes(def.flags));
-        SafeSet(statsText,  BuildStats(def.flags));   // << only change to stats
         SafeSet(numberText, $"#{def.number}");
         SafeSet(cartTitleText, def.title);
 
@@ -82,7 +81,7 @@ public GameObject[] hideWhenLocked;
         if (bandButton)
         {
             bandButton.onClick.RemoveAllListeners();
-            bandButton.onClick.AddListener(() => _meta.StartGame(_def));
+            bandButton.onClick.AddListener(() => TryStartGame());
             ApplyColorBlock(bandButton, _highlight);
             SetHighlight(false);
         }
@@ -90,7 +89,7 @@ public GameObject[] hideWhenLocked;
         if (btnPlay)
         {
             btnPlay.onClick.RemoveAllListeners();
-            btnPlay.onClick.AddListener(() => _meta.StartGame(_def));
+            btnPlay.onClick.AddListener(() => TryStartGame());
 
             // Make navigation sane: from PLAY -> band, from band -> PLAY (left/right)
             var nPlay = btnPlay.navigation;
@@ -110,25 +109,43 @@ public GameObject[] hideWhenLocked;
 
         // initialize countdown visibility without altering layout
         UpdateLockVisuals(force:true);
+
+        // show highs now
+        RefreshStats();
+    }
+
+    // allow UI to refresh highs without rebuilding bands
+    public void RefreshStats()
+    {
+        if (statsText == null || _def == null) return;
+        statsText.text = BuildStats(_def.flags);
     }
 
     // ---------- EventSystem hooks (controller/keyboard navigation) ----------
     public void OnSelect(BaseEventData e)
     {
         SetHighlight(true);
-        onSelected?.Invoke(Rect); // NEW: tell UI to scroll me into view
+        onSelected?.Invoke(Rect); // tell UI to scroll me into view
     }
 
     public void OnDeselect(BaseEventData e) => SetHighlight(false);
 
     public void OnPointerClick(PointerEventData e)
     {
-        if (bandButton && bandButton.interactable) _meta.StartGame(_def);
+        if (e.button != PointerEventData.InputButton.Left) return;
+        TryStartGame();
     }
 
-    public void OnSubmit(BaseEventData e)
+    public void OnSubmit(BaseEventData e) { TryStartGame(); }
+
+    void TryStartGame()
     {
-        if (bandButton && bandButton.interactable) _meta.StartGame(_def);
+        if (_locked || (bandButton && !bandButton.interactable))
+        {
+            _meta?.audioBus?.BeepOnce(180f, 0.06f, 0.20f); // denial
+            return;
+        }
+        _meta?.StartGame(_def);
     }
 
     void SetHighlight(bool on)
@@ -136,7 +153,6 @@ public GameObject[] hideWhenLocked;
         if (bandHighlightFrame)
             bandHighlightFrame.color = on ? _highlight : _dim;
 
-        // If you want the cartridge title to glow a bit on focus:
         if (cartTitleText)
             cartTitleText.color = on ? Color.Lerp(_highlight, Color.white, 0.35f) : new Color(1,1,1,0.85f);
     }
@@ -153,38 +169,40 @@ public GameObject[] hideWhenLocked;
         }
     }
 
-  void UpdateLockVisuals(bool force)
-{
-    bool newLocked = !_meta.IsUnlocked(_def);
-
-    if (force || newLocked != _locked)
+    void UpdateLockVisuals(bool force)
     {
-        _locked = newLocked;
+        bool newLocked = !_meta.IsUnlocked(_def);
 
-        if (unlockCountdownText)
-            unlockCountdownText.gameObject.SetActive(_locked);
-
-        // Only hide what you assigned in the Inspector
-        if (hideWhenLocked != null)
-            for (int i = 0; i < hideWhenLocked.Length; i++)
-                if (hideWhenLocked[i]) hideWhenLocked[i].SetActive(!_locked);
-    }
-
-    if (_locked && unlockCountdownText)
-    {
-        DateTime now = _meta.NowUtc;
-        TimeSpan left = (_def.unlockAtUtc.HasValue ? (_def.unlockAtUtc.Value - now) : TimeSpan.Zero);
-        if (left.TotalSeconds < 0) left = TimeSpan.Zero;
-
-        string txt = FormatCountdown(left);
-        if (!string.Equals(txt, _lastCountdownText))
+        if (force || newLocked != _locked)
         {
-            _lastCountdownText = txt;
-            unlockCountdownText.text = $"Unlocks in {txt}";
+            _locked = newLocked;
+
+            if (unlockCountdownText)
+                unlockCountdownText.gameObject.SetActive(_locked);
+
+            // Only hide what you assigned in the Inspector
+            if (hideWhenLocked != null)
+                for (int i = 0; i < hideWhenLocked.Length; i++)
+                    if (hideWhenLocked[i]) hideWhenLocked[i].SetActive(!_locked);
+
+            if (bandButton) bandButton.interactable = !_locked;
+            if (btnPlay)    btnPlay.interactable    = !_locked;
+        }
+
+        if (_locked && unlockCountdownText)
+        {
+            DateTime now = _meta.NowUtc;
+            TimeSpan left = (_def.unlockAtUtc.HasValue ? (_def.unlockAtUtc.Value - now) : TimeSpan.Zero);
+            if (left.TotalSeconds < 0) left = TimeSpan.Zero;
+
+            string txt = FormatCountdown(left);
+            if (!string.Equals(txt, _lastCountdownText))
+            {
+                _lastCountdownText = txt;
+                unlockCountdownText.text = $"Unlocks in {txt}";
+            }
         }
     }
-}
-
 
     static string FormatCountdown(TimeSpan t)
     {
@@ -302,19 +320,23 @@ public GameObject[] hideWhenLocked;
 
     string BuildStats(GameFlags f)
     {
+        if (_def == null) return "";
+        string id = _def.id ?? "";
         bool has1P = (f & GameFlags.Solo) != 0;
         bool has2P = (f & (GameFlags.Versus2P | GameFlags.Coop2P | GameFlags.Alt2P)) != 0;
 
-        if (has1P && has2P) return "1P best: –   2P best: –";
-        if (has1P)          return "1P best: –";
-        if (has2P)          return "2P best: –";
-        return ""; // exotic: no score categories
+        int hi1 = has1P ? PlayerPrefs.GetInt("hi1p_" + id, 0) : 0;
+        int hi2 = has2P ? PlayerPrefs.GetInt("hi2p_" + id, 0) : 0;
+
+        if (has1P && has2P) return $"1P best: {hi1}   2P best: {hi2}";
+        if (has1P)          return $"1P best: {hi1}";
+        if (has2P)          return $"2P best: {hi2}";
+        return "";
     }
 
     // Deterministic, nice-ish palette from game number
     Color AutoColor(GameDef def)
     {
-        // Spread hues around the wheel; keep saturation/value punchy
         float hue = ((def.number * 37) % 360) / 360f;
         var c = Color.HSVToRGB(hue, 0.65f, 0.95f);
         c.a = 1f;
@@ -326,7 +348,7 @@ public GameObject[] hideWhenLocked;
         var cb = s.colors;
         cb.colorMultiplier = 1f;
         cb.fadeDuration    = 0.08f;
-        cb.normalColor     = new Color(1,1,1,1);           // we tint via frame; keep neutral here
+        cb.normalColor     = new Color(1,1,1,1);
         cb.highlightedColor= Color.Lerp(accent, Color.white, 0.35f);
         cb.selectedColor   = Color.Lerp(accent, Color.white, 0.20f);
         cb.pressedColor    = Color.Lerp(accent, Color.black, 0.20f);
@@ -338,7 +360,6 @@ public GameObject[] hideWhenLocked;
     // ============================================================
     // ============  SHARED STATIC CARTRIDGE PAINTER  =============
     // ============================================================
-    // Lets other UI (in-game menu) render the *same* cartridge without a new script.
     public static void PaintCartridgeForGame(
         GameDef def,
         RawImage cartridgeImage,
@@ -363,7 +384,6 @@ public GameObject[] hideWhenLocked;
         if (cartTitleText) cartTitleText.text = def.title ?? "";
         if (numberText)    numberText.text    = $"#{def.number}";
 
-        // Load texture from StreamingAssets/labels or /covers using id or title
         Texture2D tex = TryLoadLabelTextureStatic(def, labelsFolder);
         cartridgeImage.texture = tex;
         cartridgeImage.uvRect  = new Rect(0,0,1,1);
