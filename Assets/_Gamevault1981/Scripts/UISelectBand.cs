@@ -1,4 +1,6 @@
-// UISelectBand.cs
+// UISelectBand.cs — FULL FILE
+// Shows countdown "Unlocks in ..." OR score shortfall, and a pulsing NEW! badge until played.
+// Replaces your current UISelectBand.cs. :contentReference[oaicite:1]{index=1}
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -9,34 +11,36 @@ using System.IO;
 public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPointerClickHandler, ISubmitHandler
 {
     [Header("Band root (focus/click target)")]
-    public Button bandButton;             // <- add a Button on the band root; assign here
-    public Image  bandHighlightFrame;     // <- optional outline/underlay image to tint on focus
+    public Button bandButton;
+    public Image  bandHighlightFrame;
 
     [Header("Cartridge visuals")]
-    public RawImage cartridgeImage;       // label goes here
-    public TMP_Text cartTitleText;        // overlay title on the cartridge (optional)
-    public TMP_Text numberText;           // "#<n>" badge (optional)
+    public RawImage cartridgeImage;
+    public TMP_Text cartTitleText;
+    public TMP_Text numberText;
 
     [Header("Right-side texts")]
-    public TMP_Text titleText;            // large title on the band (optional if you rely on cartridge only)
+    public TMP_Text titleText;
     public TMP_Text descText;
     public TMP_Text modesText;
     public TMP_Text statsText;
 
     [Header("Actions (optional)")]
-    public Button btnPlay;                // you can keep a separate PLAY button if you like
+    public Button btnPlay;
 
-    [Header("Unlock overlay (countdown only)")]
-    [Tooltip("TMP text placed visually where you want the countdown (e.g., over the band).")]
+    [Header("Lock overlay text")]
+    [Tooltip("TMP placed where you want the countdown/shortfall text.")]
     public TMP_Text unlockCountdownText;
 
+    [Header("Badge for newly unlocked & unplayed (beyond defaults)")]
+    public TMP_Text newBadgeText; // optional; set to a TMP on top of the cartridge (e.g., “NEW!”)
+
     [Header("Hide When Locked")]
-    [Tooltip("Drag anything you want hidden while locked (title/desc/modes/stats/PLAY containers, etc.).")]
     public GameObject[] hideWhenLocked;
 
     [Header("Label loading (StreamingAssets)")]
-    [SerializeField] string labelsFolder = "labels";                 // StreamingAssets/labels/<id or title>.(png|jpg|jpeg)
-    [SerializeField] Vector2 defaultFocus = new Vector2(0.5f, 0.5f); // crop focus 0..1 (x,y)
+    [SerializeField] string labelsFolder = "labels";
+    [SerializeField] Vector2 defaultFocus = new Vector2(0.5f, 0.5f);
     [Serializable] public struct LabelCropOverride { public string id; public Vector2 focus; }
     [SerializeField] LabelCropOverride[] cropOverrides;
 
@@ -44,7 +48,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     [Tooltip("Leave alpha=0 to auto-generate from game number.")]
     public Color highlightOverride = new Color(0,0,0,0);
 
-    // Allows UIManager to auto-scroll this into view when it gets focus
     public Action<RectTransform> onSelected;
     public RectTransform Rect => transform as RectTransform;
 
@@ -53,32 +56,27 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     Color _highlight;
     Color _dim;
 
-    // minimal unlock state tracking
     bool _locked;
     float _nextTick;
     string _lastCountdownText = "";
+    float _badgePulse;
 
-    // ---------- Public API ----------
     public void Bind(GameDef def, MetaGameManager meta)
     {
         _def = def;
         _meta = meta;
 
-        // Choose highlight color
         _highlight = (highlightOverride.a > 0.01f) ? highlightOverride : AutoColor(def);
         _dim       = new Color(_highlight.r, _highlight.g, _highlight.b, 0.18f);
 
-        // Texts
         SafeSet(titleText,  def.title);
         SafeSet(descText,   def.desc);
         SafeSet(modesText,  Modes(def.flags));
         SafeSet(numberText, $"#{def.number}");
         SafeSet(cartTitleText, def.title);
 
-        // Label art
         LoadAndCropLabel();
 
-        // Button wiring
         if (bandButton)
         {
             bandButton.onClick.RemoveAllListeners();
@@ -91,7 +89,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         {
             btnPlay.onClick.RemoveAllListeners();
             btnPlay.onClick.AddListener(() => TryStartGame());
-
             var nPlay = btnPlay.navigation;
             nPlay.mode = Navigation.Mode.Explicit;
             nPlay.selectOnLeft = bandButton ? bandButton : null;
@@ -106,11 +103,9 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
                                          ?? (Graphic)cartridgeImage;
         }
 
-        // initialize countdown visibility without altering layout
         UpdateLockVisuals(force:true);
-
-        // show highs now
         RefreshStats();
+        UpdateNewBadge(force:true);
     }
 
     public void RefreshStats()
@@ -119,11 +114,10 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         statsText.text = BuildStats(_def.flags);
     }
 
-    // ---------- EventSystem hooks (controller/keyboard navigation) ----------
     public void OnSelect(BaseEventData e)
     {
         SetHighlight(true);
-        onSelected?.Invoke(Rect); // tell UI to scroll me into view
+        onSelected?.Invoke(Rect);
     }
 
     public void OnDeselect(BaseEventData e) => SetHighlight(false);
@@ -140,10 +134,11 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
     {
         if (_locked || (bandButton && !bandButton.interactable))
         {
-            _meta?.audioBus?.BeepOnce(180f, 0.06f, 0.20f); // denial
+            _meta?.audioBus?.BeepOnce(180f, 0.06f, 0.20f);
             return;
         }
         _meta?.StartGame(_def);
+        UpdateNewBadge(force:true); // clear on next paint after meta marks played
     }
 
     void SetHighlight(bool on)
@@ -155,15 +150,37 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
             cartTitleText.color = on ? Color.Lerp(_highlight, Color.white, 0.35f) : new Color(1,1,1,0.85f);
     }
 
-    // ---------- Minimal unlock countdown (no other UI changes) ----------
     void Update()
     {
         if (_def == null || _meta == null) return;
 
         if (Time.unscaledTime >= _nextTick)
         {
-            _nextTick = Time.unscaledTime + 0.5f; // ~2Hz tick
+            _nextTick = Time.unscaledTime + 0.5f;
             UpdateLockVisuals(force:false);
+        }
+
+        // badge pulse
+        if (newBadgeText && newBadgeText.gameObject.activeSelf)
+        {
+            _badgePulse += Time.unscaledDeltaTime * 3.0f;
+            float s = 1.0f + 0.05f * Mathf.Sin(_badgePulse * 2.1f);
+            float a = 0.70f + 0.30f * Mathf.Sin(_badgePulse);
+            newBadgeText.rectTransform.localScale = new Vector3(s, s, 1f);
+            var c = newBadgeText.color; c.a = a; newBadgeText.color = c;
+        }
+    }
+
+    void UpdateNewBadge(bool force)
+    {
+        if (!newBadgeText) return;
+        bool show = _meta.IsUnlocked(_def)
+                  && _def.number > Mathf.Max(0, _meta.AlwaysUnlockedFirstN)
+                  && !_meta.HasPlayed(_def);
+        if (force || newBadgeText.gameObject.activeSelf != show)
+        {
+            newBadgeText.gameObject.SetActive(show);
+            if (show && string.IsNullOrEmpty(newBadgeText.text)) newBadgeText.text = "NEW!";
         }
     }
 
@@ -188,16 +205,30 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
 
         if (_locked && unlockCountdownText)
         {
-            DateTime now = _meta.NowUtc;
-            TimeSpan left = (_def.unlockAtUtc.HasValue ? (_def.unlockAtUtc.Value - now) : TimeSpan.Zero);
-            if (left.TotalSeconds < 0) left = TimeSpan.Zero;
-
-            string txt = FormatCountdown(left);
-            if (!string.Equals(txt, _lastCountdownText))
+            var left = _meta.TimeUntilUnlock(_def);
+            if (left == TimeSpan.MaxValue) // time unlock disabled → just show score path
             {
-                _lastCountdownText = txt;
-                unlockCountdownText.text = $"Unlocks in {txt}";
+                int shortfall = _meta.ScoreShortfallForUnlock(_def);
+                unlockCountdownText.text = (shortfall == int.MaxValue)
+                    ? "Unlock requirements disabled"
+                    : $"Score {shortfall:N0} more to unlock!";
             }
+            else
+            {
+                string txt = FormatCountdown(left);
+                int shortfall = _meta.ScoreShortfallForUnlock(_def);
+                string scoreClause = (shortfall == int.MaxValue) ? "" : $"  or score {shortfall:N0}!";
+                string final = $"Unlocks in {txt}{scoreClause}";
+                if (!string.Equals(final, _lastCountdownText))
+                {
+                    _lastCountdownText = final;
+                    unlockCountdownText.text = final;
+                }
+            }
+        }
+        else
+        {
+            UpdateNewBadge(force:false);
         }
     }
 
@@ -208,7 +239,6 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         return $"{days:00}:{hh:00}:{mm:00}:{ss:00}";
     }
 
-    // ---------- Label loading & cropping ----------
     void LoadAndCropLabel()
     {
         if (!cartridgeImage || _def == null) return;
@@ -237,7 +267,7 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
             return t;
         }
 
-        string[] names = { _def.id, _def.title };  // support IDs or legacy Title filenames
+        string[] names = { _def.id, _def.title };
         string[] exts  = { ".png", ".jpg", ".jpeg" };
         string[] folders = { Path.Combine(sa, labelsFolder), Path.Combine(sa, "covers") };
 
@@ -308,23 +338,11 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
         s.colors = cb;
     }
 
-    // ============  SHARED STATIC CARTRIDGE PAINTER  ============
-    public static void PaintCartridgeForGame(
-        GameDef def,
-        RawImage cartridgeImage,
-        TMP_Text cartTitleText,
-        TMP_Text numberText)
-    {
-        PaintCartridgeForGame(def, cartridgeImage, cartTitleText, numberText, "labels");
-    }
+    // Static helpers reused by UIManager for the in-game cartridge preview
+    public static void PaintCartridgeForGame(GameDef def, RawImage cartridgeImage, TMP_Text cartTitleText, TMP_Text numberText)
+    { PaintCartridgeForGame(def, cartridgeImage, cartTitleText, numberText, "labels"); }
 
-    public static void PaintCartridgeForGame(
-        GameDef def,
-        RawImage cartridgeImage,
-        TMP_Text cartTitleText,
-        TMP_Text numberText,
-        string labelsFolder
-    )
+    public static void PaintCartridgeForGame(GameDef def, RawImage cartridgeImage, TMP_Text cartTitleText, TMP_Text numberText, string labelsFolder)
     {
         if (def == null || cartridgeImage == null) return;
 
@@ -333,7 +351,7 @@ public class UISelectBand : MonoBehaviour, ISelectHandler, IDeselectHandler, IPo
 
         Texture2D tex = TryLoadLabelTextureStatic(def, labelsFolder);
         cartridgeImage.texture = tex;
-        cartridgeImage.uvRect  = new Rect(0, 0, 1, 1);   
+        cartridgeImage.uvRect  = new Rect(0, 0, 1, 1);
 
         if (tex == null) return;
 

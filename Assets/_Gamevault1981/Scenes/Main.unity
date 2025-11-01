@@ -474,10 +474,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cf81a32a458103e4bb39a08dae887338, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InputManager
-  <MapP1>k__BackingField: 0
-  <MapP2>k__BackingField: 0
-  mouseFollow: 0.25
-  _mouseFiltered: {x: 0, y: 0}
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -2446,7 +2442,7 @@ MonoBehaviour:
   gameHost: {fileID: 498365544}
   titleMusic: {fileID: 8300000, guid: 005fa31a25872354e81f16a5e90b2e11, type: 3}
   ShowLockedBands: 1
-  AlwaysUnlockedFirstN: 76
+  AlwaysUnlockedFirstN: 10
   serverTimeOffsetSeconds: 0
   mixer: {fileID: 24100000, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
   mixerMusicGroup: {fileID: 1653838731606186422, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
