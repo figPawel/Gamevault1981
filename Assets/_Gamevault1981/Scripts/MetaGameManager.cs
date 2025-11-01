@@ -503,36 +503,37 @@ public void OpenTitle()
     }
 
     // ---------- Session / High score API ----------
-public void ReportRun(GameDef def, GameMode mode, int scoreP1, int scoreP2)
-{
-    int add = Mathf.Max(0, scoreP1) + Mathf.Max(0, scoreP2);
-    _sessionScore += add;
-
-    // Debug tracing so you see session accrual every time we add to it
-    if (def != null)
-        Debug.Log($"[Gamevault] ReportRun: '{def.title}' mode={mode} p1={scoreP1} p2={scoreP2} add={add} session_total={_sessionScore}");
-    else
-        Debug.Log($"[Gamevault] ReportRun: <null def> mode={mode} p1={scoreP1} p2={scoreP2} add={add} session_total={_sessionScore}");
-
-    if (def == null) return;
-    string id = def.id ?? "";
-
-    // Update per-game highs (unchanged)
-    if (mode == GameMode.Solo)
+    public void ReportRun(GameDef def, GameMode mode, int scoreP1, int scoreP2)
     {
-        string k = $"hi1p_{id}";
-        int cur = PlayerPrefs.GetInt(k, 0);
-        if (scoreP1 > cur) PlayerPrefs.SetInt(k, scoreP1);
+        int add = Mathf.Max(0, scoreP1) + Mathf.Max(0, scoreP2);
+        _sessionScore += add;
+
+        // Debug tracing so you see session accrual every time we add to it
+        if (def != null)
+            Debug.Log($"[Gamevault] ReportRun: '{def.title}' mode={mode} p1={scoreP1} p2={scoreP2} add={add} session_total={_sessionScore}");
+        else
+            Debug.Log($"[Gamevault] ReportRun: <null def> mode={mode} p1={scoreP1} p2={scoreP2} add={add} session_total={_sessionScore}");
+
+        if (def == null) return;
+        string id = def.id ?? "";
+
+        // Update per-game highs (unchanged)
+        if (mode == GameMode.Solo)
+        {
+            string k = $"hi1p_{id}";
+            int cur = PlayerPrefs.GetInt(k, 0);
+            if (scoreP1 > cur) PlayerPrefs.SetInt(k, scoreP1);
+        }
+        else
+        {
+            int sum2 = Mathf.Max(0, scoreP1) + Mathf.Max(0, scoreP2);
+            string k = $"hi2p_{id}";
+            int cur = PlayerPrefs.GetInt(k, 0);
+            if (sum2 > cur) PlayerPrefs.SetInt(k, sum2);
+        }
+        PlayerPrefs.Save();
     }
-    else
-    {
-        int sum2 = Mathf.Max(0, scoreP1) + Mathf.Max(0, scoreP2);
-        string k = $"hi2p_{id}";
-        int cur = PlayerPrefs.GetInt(k, 0);
-        if (sum2 > cur) PlayerPrefs.SetInt(k, sum2);
-    }
-    PlayerPrefs.Save();
-}
+
 
     void FocusSelectionHeader()
 {

@@ -377,10 +377,12 @@ if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
         if (btnInGameQuit) btnInGameQuit.onClick.RemoveAllListeners();
 
         if (btnInGameQuit) btnInGameQuit.onClick.AddListener(() =>
-        {
-            ShowInGameMenu(false);
-            _meta.QuitToSelection();
-        });
+      {
+          ShowInGameMenu(false);
+       if (gm) gm.QuitToMenu(); 
+    _meta.QuitToSelection();
+});
+
 
         if (btnInGameSolo) btnInGameSolo.onClick.AddListener(() => { ShowInGameMenu(false); _meta.StartGame(gm.Def, GameMode.Solo); });
         if (btnInGameVs)   btnInGameVs  .onClick.AddListener(() => { ShowInGameMenu(false); _meta.StartGame(gm.Def, GameMode.Versus2P); });

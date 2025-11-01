@@ -2397,9 +2397,8 @@ MonoBehaviour:
   ui: {fileID: 2057897085}
   gameHost: {fileID: 498365544}
   titleMusic: {fileID: 8300000, guid: 005fa31a25872354e81f16a5e90b2e11, type: 3}
-  selectionMusic: {fileID: 0}
   ShowLockedBands: 1
-  AlwaysUnlockedFirstN: 20
+  AlwaysUnlockedFirstN: 3
   serverTimeOffsetSeconds: 0
   mixer: {fileID: 24100000, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
   mixerMusicGroup: {fileID: 1653838731606186422, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
@@ -4625,12 +4624,14 @@ MonoBehaviour:
   igCartTitle: {fileID: 782553359}
   igCartNumber: {fileID: 1922379735}
   igLabelsFolder: labels
-  igDefaultFocus: {x: 0.5, y: 0.5}
-  igCropOverrides: []
   UseAutoEdgeMargins: 0
   AutoEdgeFactor: 0.5
   TopEdgeMargin: 0
   BottomEdgeMargin: 0
+  mainScoreText: {fileID: 1375915047}
+  mainScoreCountSpeed: 200
+  mainScoreTickHz: 150
+  mainScoreFinishHz: 600
 --- !u!114 &2057897086
 MonoBehaviour:
   m_ObjectHideFlags: 0

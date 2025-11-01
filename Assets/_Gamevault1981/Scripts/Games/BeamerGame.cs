@@ -82,7 +82,11 @@ public class BeamerGame : GameManager
     void Update()
     {
         if (!Running) return;
-        if (HandleCommonPause()) return;
+      // 1. Check for Game Over first. If it returns true, stop.
+    if (HandleGameOver()) return;
+    
+    // 2. Check for Pause. If it returns true, stop.
+    if (HandlePause()) return;
 
         float dt = Time.deltaTime;
 
