@@ -1,4 +1,6 @@
-// UIManager.cs
+// UIManager.cs — FULL FILE
+// Adds banner support for “X NEW GAMES UNLOCKED!” and keeps everything else intact.
+// Replaces your current UIManager.cs. :contentReference[oaicite:2]{index=2}
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -17,6 +19,7 @@ public class UIManager : MonoBehaviour
     public CanvasGroup selectRoot;
     public RectTransform listRoot;          // Content
     public GameObject bandPrefab;
+    public GameObject unlockBannerPrefab;   // <- assign your narrow copy with a single TMP
     public Button btnBackFromSelect;
     public Button btnTopOptions;
     public Button btnTopLeaderboards;
@@ -77,6 +80,11 @@ public class UIManager : MonoBehaviour
     float _mainCurrent;
     int   _mainShown = -1;
 
+    // New-unlocks banner
+    GameObject _bannerGO;
+    TMP_Text _bannerTxt;
+    float _bannerPulseT;
+
     void Awake()
     {
         _musicVol = PlayerPrefs.GetFloat("opt_music", 0.8f);
@@ -122,13 +130,23 @@ public class UIManager : MonoBehaviour
             }
         }
 
-        // -------- Unified input routing (Back & Pause) — new Input System only --------
+        // ---- banner pulse
+        if (_bannerGO && _bannerGO.activeInHierarchy)
+        {
+            _bannerPulseT += Time.unscaledDeltaTime * 2.6f;
+            float s = 1f + 0.04f * Mathf.Sin(_bannerPulseT * 1.9f);
+            float a = 0.85f + 0.15f * Mathf.Sin(_bannerPulseT);
+            _bannerGO.transform.localScale = new Vector3(s, s, 1f);
+            if (_bannerTxt) { var c = _bannerTxt.color; c.a = a; _bannerTxt.color = c; }
+        }
+
+        // -------- Unified input routing
         bool backDown = false, backHeld = false, pauseDown = false;
 
         var gp = Gamepad.current;
         if (gp != null)
         {
-            if (gp.buttonEast.wasPressedThisFrame) backDown = true;  // B / Circle
+            if (gp.buttonEast.wasPressedThisFrame) backDown = true;
             if (gp.buttonEast.isPressed) backHeld = true;
             if (gp.startButton.wasPressedThisFrame) pauseDown = true;
         }
@@ -148,7 +166,6 @@ public class UIManager : MonoBehaviour
             if (ms.rightButton.isPressed) backHeld = true;
         }
 
-        // Back hold-to-quit timer
         if (backHeld) _backHold += Time.unscaledDeltaTime;
         else _backHold = 0f;
 
@@ -245,7 +262,7 @@ public class UIManager : MonoBehaviour
 
         if (on)
         {
-            // Focus the header (Options -> Leaderboards -> Back), not a band
+            // Focus header, not a band
             GameObject header =
                 (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
                 (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
@@ -254,9 +271,12 @@ public class UIManager : MonoBehaviour
             if (header) EventSystem.current?.SetSelectedGameObject(header);
             if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
 
-            // ensure main score text shows current value if no payout running
             if (!_mainCounting && mainScoreText && _meta != null)
                 mainScoreText.text = _meta.MainScore.ToString("N0");
+        }
+        else
+        {
+            HideNewUnlocksBanner();
         }
     }
 
@@ -293,7 +313,7 @@ public class UIManager : MonoBehaviour
             var band = go.GetComponent<UISelectBand>();
             if (band != null)
             {
-                band.Bind(g, _meta); // band will query meta.NowUtc for live countdown & lock visuals
+                band.Bind(g, _meta);
                 band.onSelected = (rect) => { ScrollToBand(rect); _meta?.PreviewGameTrack(g); };
             }
             _bands.Add(go);
@@ -322,7 +342,6 @@ public class UIManager : MonoBehaviour
             return;
         if (!item.IsChildOf(selectScroll.content)) return;
 
-        // Make sure content size is current (prevents first-jump when options collapse)
         LayoutRebuilder.ForceRebuildLayoutImmediate(selectScroll.content);
 
         var content   = selectScroll.content;
@@ -349,6 +368,27 @@ public class UIManager : MonoBehaviour
 
         float targetNorm = 1f - Mathf.Clamp01(desiredFromTop / scrollable);
         selectScroll.verticalNormalizedPosition = targetNorm;
+    }
+
+    // ---------- New-unlocks banner ----------
+    public void ShowNewUnlocksBanner(int count)
+    {
+        if (!unlockBannerPrefab || !listRoot) return;
+        HideNewUnlocksBanner();
+
+        _bannerGO = Instantiate(unlockBannerPrefab, listRoot);
+        _bannerTxt = _bannerGO.GetComponentInChildren<TMP_Text>(true);
+        if (_bannerTxt) _bannerTxt.text = $"{count} NEW GAMES UNLOCKED!";
+        _bannerPulseT = 0f;
+
+        // try to place just below the header
+        _bannerGO.transform.SetSiblingIndex(1);
+    }
+
+    public void HideNewUnlocksBanner()
+    {
+        if (_bannerGO) Destroy(_bannerGO);
+        _bannerGO = null; _bannerTxt = null; _bannerPulseT = 0f;
     }
 
     // ---------- In-Game Menu wiring ----------
@@ -604,7 +644,6 @@ public class UIManager : MonoBehaviour
         var es = EventSystem.current;
         if (!es) return;
 
-        // Title
         if (TitleActive())
         {
             if (!es.currentSelectedGameObject || !es.currentSelectedGameObject.activeInHierarchy ||
@@ -615,7 +654,6 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        // Selection (bands + header)
         if (SelectionActive())
         {
             var sel = es.currentSelectedGameObject;
@@ -631,7 +669,6 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        // In-Game menu
         if (InGameMenuActive())
         {
             var sel = es.currentSelectedGameObject;

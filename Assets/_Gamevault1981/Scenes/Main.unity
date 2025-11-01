@@ -2444,6 +2444,13 @@ MonoBehaviour:
   ShowLockedBands: 1
   AlwaysUnlockedFirstN: 10
   serverTimeOffsetSeconds: 0
+  enableTimeUnlocks: 1
+  baseIntervalMinutes: 1440
+  timeCurve: 0
+  intervalGrowth: 1.25
+  enableScoreUnlocks: 1
+  baseScorePerUnlock: 5000
+  scoreGrowth: 1
   mixer: {fileID: 24100000, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
   mixerMusicGroup: {fileID: 1653838731606186422, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
   mixerSfxGroup: {fileID: 6751983027299263829, guid: d9cb9b2f78520464889c23c8bd35fc59, type: 2}
@@ -4653,6 +4660,7 @@ MonoBehaviour:
   selectRoot: {fileID: 115637327}
   listRoot: {fileID: 1190183738}
   bandPrefab: {fileID: 7919669846977238603, guid: 9046a41bf70c6804a862d85bc75d3b1d, type: 3}
+  unlockBannerPrefab: {fileID: 7919669846977238603, guid: d720fc236ba120a4f9be600084442c77, type: 3}
   btnBackFromSelect: {fileID: 1821519009}
   btnTopOptions: {fileID: 954399324}
   btnTopLeaderboards: {fileID: 2115419978}

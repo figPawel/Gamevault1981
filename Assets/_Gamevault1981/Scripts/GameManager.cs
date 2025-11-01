@@ -1,4 +1,6 @@
-// GameManager.cs
+// GameManager.cs — FULL FILE
+// Only change relevant here is: Start/Quit flow is unchanged; MetaGameManager handles "played" flag and unlock logic.
+// Replaces your current GameManager.cs. :contentReference[oaicite:3]{index=3}
 using UnityEngine;
 using UnityEngine.InputSystem;
 
