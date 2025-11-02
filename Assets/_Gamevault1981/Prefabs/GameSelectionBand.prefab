@@ -812,8 +812,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 474.2342, y: -71.627}
-  m_SizeDelta: {x: 834.9713, y: 115.66}
+  m_AnchoredPosition: {x: 608.5421, y: -71.626}
+  m_SizeDelta: {x: 567.5796, y: 115.66}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &4812390919485977511
 CanvasRenderer:
@@ -870,8 +870,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 22
-  m_fontSizeBase: 22
+  m_fontSize: 20
+  m_fontSizeBase: 20
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -1576,7 +1576,6 @@ MonoBehaviour:
   - {fileID: 8782870670836922495}
   - {fileID: 6284104946526260445}
   - {fileID: 1167942551745819523}
-  - {fileID: 2979704179823862696}
   labelsFolder: labels
   defaultFocus: {x: 0.5, y: 0.5}
   cropOverrides: []
@@ -1930,11 +1929,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TextMeshProUGUI
---- !u!1 &2979704179823862696 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 4100872852201903448, guid: 827fa6e279ad3b5408e5c6bc5717b42f, type: 3}
-  m_PrefabInstance: {fileID: 1275419244744177392}
-  m_PrefabAsset: {fileID: 0}
 --- !u!114 &5508468729845854238 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 6755733779637290734, guid: 827fa6e279ad3b5408e5c6bc5717b42f, type: 3}

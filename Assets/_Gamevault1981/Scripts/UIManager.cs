@@ -112,103 +112,157 @@ bool _lbSubscribedToPDM = false;
         if (first) EventSystem.current?.SetSelectedGameObject(first.gameObject);
     }
 
-    void Update()
-    {
-        // score count-up
-        if (_mainCounting)
-        {
-            float step = Mathf.Max(1f, mainScoreCountSpeed) * Time.unscaledDeltaTime;
-            _mainCurrent = Mathf.Min(_mainCurrent + step, _mainTo);
-            int disp = Mathf.FloorToInt(_mainCurrent);
-
-            if (disp != _mainShown)
-            {
-                _mainShown = disp;
-                if (mainScoreText) mainScoreText.text = _mainShown.ToString("N0");
-                if (_meta && _meta.audioBus && mainScoreTickHz > 0f)
-                    _meta.audioBus.BeepOnce(mainScoreTickHz, 0.015f, 0.09f);
-            }
-
-            if (Mathf.Approximately(_mainCurrent, _mainTo))
-            {
-                _mainCounting = false;
-                if (mainScoreText) mainScoreText.text = _mainTo.ToString("N0");
-                if (_meta && _meta.audioBus && mainScoreFinishHz > 0f)
-                    _meta.audioBus.BeepOnce(mainScoreFinishHz, 0.10f, 0.25f);
-            }
-        }
-
-        // banner pulse + rainbow
-        if (_bannerGO && _bannerGO.activeInHierarchy)
-        {
-            _bannerPulseT += Time.unscaledDeltaTime * 2.6f;
-            float s = 1f + 0.04f * Mathf.Sin(_bannerPulseT * 1.9f);
-            float a = 0.85f + 0.15f * Mathf.Sin(_bannerPulseT);
-            _bannerGO.transform.localScale = new Vector3(s, s, 1f);
-            if (_bannerTxt)
-            {
-                var c = _bannerTxt.color; c.a = a; _bannerTxt.color = c;
-                AnimateRainbowTMP(_bannerTxt, bannerRainbowSpeed, bannerRainbowSpread);
-            }
-        }
-
-        // mouse wheel scrolling works immediately when over viewport
-        if (SelectionActive() && selectScroll && selectViewport && Mouse.current != null)
-        {
-            float wheel = Mouse.current.scroll.ReadValue().y;
-            if (Mathf.Abs(wheel) > 0.01f)
-            {
-                Vector2 sp = Mouse.current.position.ReadValue();
-                if (RectTransformUtility.RectangleContainsScreenPoint(selectViewport, sp, null))
-                {
-                    float sens = 0.0016f;
-                    float v = Mathf.Clamp01(selectScroll.verticalNormalizedPosition + wheel * sens);
-                    selectScroll.verticalNormalizedPosition = v;
-                }
-            }
-        }
-
-        // unified input via InputManager
-        bool backDown = InputManager.I && InputManager.I.UIBackDown();
-        bool backHeld = InputManager.I && InputManager.I.UIBackHeld();
-        bool pauseDown = InputManager.I && InputManager.I.UIPauseDown();
-
-        // We DO NOT react to Back during gameplay or in-game menu anymore.
-        if (TitleActive())
-        {
-            var es1 = EventSystem.current;
-            if (es1 && (!es1.currentSelectedGameObject || !es1.currentSelectedGameObject.activeInHierarchy))
-            {
-                var first = FirstTitleButton();
-                if (first) es1.SetSelectedGameObject(first.gameObject);
-            }
-        }
-        StickyFocusGuard();
-
-       if (SelectionActive())
+void Update()
 {
-    if (backDown) HandleBackSinglePress();
+    // -------- Main score count-up --------
+    if (_mainCounting)
+    {
+        float step = Mathf.Max(1f, mainScoreCountSpeed) * Time.unscaledDeltaTime;
+        _mainCurrent = Mathf.Min(_mainCurrent + step, _mainTo);
+        int disp = Mathf.FloorToInt(_mainCurrent);
+
+        if (disp != _mainShown)
+        {
+            _mainShown = disp;
+            if (mainScoreText) mainScoreText.text = _mainShown.ToString("N0");
+            if (_meta && _meta.audioBus && mainScoreTickHz > 0f)
+                _meta.audioBus.BeepOnce(mainScoreTickHz, 0.015f, 0.09f);
+        }
+
+        if (Mathf.Approximately(_mainCurrent, _mainTo))
+        {
+            _mainCounting = false;
+            if (mainScoreText) mainScoreText.text = _mainTo.ToString("N0");
+            if (_meta && _meta.audioBus && mainScoreFinishHz > 0f)
+                _meta.audioBus.BeepOnce(mainScoreFinishHz, 0.10f, 0.25f);
+        }
+    }
+
+    // -------- New-unlocks banner pulse + rainbow --------
+    if (_bannerGO && _bannerGO.activeInHierarchy)
+    {
+        _bannerPulseT += Time.unscaledDeltaTime * 2.6f;
+        float s = 1f + 0.04f * Mathf.Sin(_bannerPulseT * 1.9f);
+        float a = 0.85f + 0.15f * Mathf.Sin(_bannerPulseT);
+        _bannerGO.transform.localScale = new Vector3(s, s, 1f);
+        if (_bannerTxt)
+        {
+            var c = _bannerTxt.color; c.a = a; _bannerTxt.color = c;
+            AnimateRainbowTMP(_bannerTxt, bannerRainbowSpeed, bannerRainbowSpread);
+        }
+    }
+
+    // -------- Mouse state (wheel + buttons + pointer position) --------
+    float wheel = 0f;
+    Vector2 mousePos = Vector2.negativeInfinity;
+    bool mouseAnyDown = false;
+#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+    var m = UnityEngine.InputSystem.Mouse.current;
+    if (m != null)
+    {
+        wheel        = m.scroll.ReadValue().y;
+        mousePos     = m.position.ReadValue();
+        mouseAnyDown = (m.leftButton.isPressed || m.rightButton.isPressed || m.middleButton.isPressed);
+    }
+#else
+    wheel        = Input.mouseScrollDelta.y;
+    mousePos     = Input.mousePosition;
+    mouseAnyDown = (Input.GetMouseButton(0) || Input.GetMouseButton(1) || Input.GetMouseButton(2));
+#endif
+
+    bool pointerOverViewport =
+        selectViewport &&
+        !float.IsNegativeInfinity(mousePos.x) &&
+        RectTransformUtility.RectangleContainsScreenPoint(selectViewport, mousePos, null);
+
+    // "Mouse is in charge" if pointer is over the viewport and any button is down or the wheel moved.
+    // We also treat inertial motion as user interaction so we don't fight the ScrollRect.
+    bool inertiaActive = selectScroll && selectScroll.velocity.sqrMagnitude > 0.00001f;
+    bool mouseInteractingWithList = (SelectionActive() && selectScroll) &&
+                                    ((pointerOverViewport && (mouseAnyDown || Mathf.Abs(wheel) > 0.01f)) || inertiaActive);
+
+    // -------- Let ScrollRect do its native wheel/drag thing --------
+    // No manual scrolling here; we only avoid interfering elsewhere.
+
+    // -------- Unified input via InputManager --------
+    bool backDown  = InputManager.I && InputManager.I.UIBackDown();
+    bool pauseDown = InputManager.I && InputManager.I.UIPauseDown();
+
+    // Keep title focus sane
+    if (TitleActive())
+    {
+        var esTitle = EventSystem.current;
+        if (esTitle && (!esTitle.currentSelectedGameObject || !esTitle.currentSelectedGameObject.activeInHierarchy))
+        {
+            var first = FirstTitleButton();
+            if (first) esTitle.SetSelectedGameObject(first.gameObject);
+        }
+    }
+
+    // General sticky-focus guard
+    StickyFocusGuard();
+
+    // -------- Pin to top when header focused (but NOT while mouse is interacting with list) --------
+    if (SelectionActive() && selectScroll)
+    {
+        var es = EventSystem.current;
+        var sel = es ? es.currentSelectedGameObject : null;
+        bool headerFocused =
+           (btnTopLeaderboards && sel == btnTopLeaderboards.gameObject) ||
+           (btnTopOptions      && sel == btnTopOptions.gameObject)      ||
+           (btnBackFromSelect  && sel == btnBackFromSelect.gameObject);
+
+        if (headerFocused && !mouseInteractingWithList)
+            selectScroll.verticalNormalizedPosition = 1f;
+    }
+
+    // -------- Back only in Selection (title/gameplay/menu ignore Back) --------
+    if (SelectionActive())
+    {
+        if (backDown) HandleBackSinglePress();
+    }
+
+    // -------- Pause opens/closes in-game menu --------
+    if (PlayingActive())
+    {
+        if (pauseDown) HandlePauseToggle();
+    }
+    else if (InGameMenuActive())
+    {
+        if (pauseDown) HandlePauseToggle();
+    }
+
+    // -------- Focus change beep + detect selection changes --------
+    var es2 = EventSystem.current;
+    var cur = es2 ? es2.currentSelectedGameObject : null;
+    bool selectionChanged = (cur != null && cur != _lastSel);
+    if (selectionChanged)
+    {
+        _lastSel = cur;
+        if (_meta && _meta.audioBus) _meta.audioBus.BeepOnce(520f, 0.02f, 0.08f);
+    }
+    if (cur == null) _lastSel = null;
+
+    // -------- Follow-the-focus autoscroll ONLY on focus change & only when mouse isn't controlling --------
+    if (SelectionActive() && selectScroll && selectionChanged && !mouseInteractingWithList && cur != null)
+    {
+        RectTransform row = null;
+
+        var gameBand = cur.GetComponentInParent<UISelectBand>();
+        if (gameBand) row = gameBand.transform as RectTransform;
+        else
+        {
+            var lb = cur.GetComponentInParent<LeaderboardBand>();
+            if (lb) row = lb.transform as RectTransform;
+            else    row = cur.transform as RectTransform;
+        }
+
+        if (row && row.transform.IsChildOf(selectScroll.content))
+            ScrollToBand(row);
+    }
 }
 
-        if (PlayingActive())
-        {
-            if (pauseDown) HandlePauseToggle(); // Pause opens menu
-        }
-        else if (InGameMenuActive())
-        {
-            if (pauseDown) HandlePauseToggle(); // Pause closes menu
-        }
 
-        // focus beep
-        var es = EventSystem.current;
-        var cur = es ? es.currentSelectedGameObject : null;
-        if (cur != null && cur != _lastSel)
-        {
-            _lastSel = cur;
-            if (_meta && _meta.audioBus) _meta.audioBus.BeepOnce(520f, 0.02f, 0.08f);
-        }
-        if (cur == null) _lastSel = null;
-    }
 
  public void Init(MetaGameManager meta)
 {
@@ -316,7 +370,7 @@ bool _lbSubscribedToPDM = false;
     }
 
     // ---------- Selection list ----------
-    public void BindSelection(List<GameDef> games)
+  public void BindSelection(List<GameDef> games)
 {
     if (_builtList) return;
 
@@ -334,8 +388,35 @@ bool _lbSubscribedToPDM = false;
         if (band != null)
         {
             band.Bind(g, _meta);
+
+            // Always allow selection/click for scrolling + preview — even when locked.
+            if (band.bandButton)
+            {
+                band.bandButton.interactable = true;     // <-- key change
+                band.bandButton.onClick.RemoveAllListeners();
+                band.bandButton.onClick.AddListener(() =>
+                {
+                    // Focus behavior shared for both locked & unlocked
+                    ScrollToBand(band.Rect);
+                    _meta?.PreviewGameTrack(g);
+
+                    // If locked, just “thunk” and bail. No start.
+                    if (_meta != null && !_meta.IsUnlocked(g))
+                    {
+                        if (_meta.audioBus) _meta.audioBus.BeepOnce(240f, 0.018f, 0.07f); // soft locked beep
+                        return;
+                    }
+
+                    // If you want click-to-open menu for unlocked games later,
+                    // call a method here (e.g., _meta.OpenGameMenuFor(g)).
+                    // Leaving it as a no-op keeps current behavior.
+                });
+            }
+
+            // Also keep our d-pad / keyboard selection hook
             band.onSelected = (rect) => { ScrollToBand(rect); _meta?.PreviewGameTrack(g); };
         }
+
         _bands.Add(go);
         _bandDefs.Add(g);
     }
@@ -359,6 +440,7 @@ bool _lbSubscribedToPDM = false;
         if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
     }
 }
+
 
 
     public void ScrollToBand(RectTransform item)

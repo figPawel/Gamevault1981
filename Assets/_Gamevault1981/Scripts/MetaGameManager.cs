@@ -39,7 +39,9 @@ public class MetaGameManager : MonoBehaviour
         PlayerPrefs.DeleteKey(PREF_FIRST_OPEN);
         PlayerPrefs.DeleteKey(PREF_UNLOCK_SEEN_COUNT);
         PlayerPrefs.Save();
+        CloudSave.SaveAllFromPrefs("test reset");
         ui?.BeginMainScoreCount(0, 0);
+
     }
 
     public static MetaGameManager I;
@@ -142,6 +144,8 @@ public class MetaGameManager : MonoBehaviour
 
     void Awake()
     {
+
+        CloudSave.PullPreferHigher();
         if (I && I != this) { Destroy(gameObject); return; }
         I = this;
         DontDestroyOnLoad(gameObject);
@@ -167,7 +171,7 @@ public class MetaGameManager : MonoBehaviour
             src.playOnAwake = false; src.loop = false; src.spatialBlend = 0f; src.volume = 1f;
             if (mixerSfxGroup) src.outputAudioMixerGroup = mixerSfxGroup;
         }
-
+CloudSave.PullPreferHigher();
         RetroAudio.GlobalSfxVolume = PlayerPrefs.GetFloat("opt_sfx", 1.0f);
         ApplyVolumesFromPrefs();
 
@@ -431,6 +435,7 @@ public class MetaGameManager : MonoBehaviour
             _sessionScore = 0;
             PlayerPrefs.SetInt(PREF_MAIN_SCORE, _mainScore);
             PlayerPrefs.Save();
+            CloudSave.SaveAllFromPrefs("session payout");
         }
 
         ui?.ShowSelect(true);

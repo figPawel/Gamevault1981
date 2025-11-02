@@ -156,7 +156,28 @@ public class Options : MonoBehaviour
 
         // Device rows that SKIP the other player's current device while cycling
         AddPlayerDeviceRow("Player 1 device",  1);
-        AddPlayerDeviceRow("Player 2 device",  2);
+        AddPlayerDeviceRow("Player 2 device", 2);
+        
+        bool confirmWipe = false;
+AddToggleRow("Delete Save Data", () => confirmWipe, on =>
+{
+    if (!confirmWipe)
+    {
+        // First press: arm confirmation
+        confirmWipe = true;
+        // Optional: flash the row or play a sound here.
+    }
+    else
+    {
+        // Second press: do the wipe
+        confirmWipe = false;
+        CloudSave.ResetAllNow();
+
+        // Reflect immediately in UI / meta
+        MetaGameManager.I?.OpenSelection(); // rebuild list & recount score from 0
+        MetaGameManager.I?.ui?.BeginMainScoreCount(0, 0);
+    }
+});
 
         WireNavigation();
         _built = true;
@@ -310,14 +331,16 @@ public class Options : MonoBehaviour
             return best;
         }
 
-        int  Wrap(int i) { int m = i % steps.Length; return m < 0 ? m + steps.Length : m; }
+        int Wrap(int i) { int m = i % steps.Length; return m < 0 ? m + steps.Length : m; }
         void SetIdx(int i) { set(steps[Wrap(i)]); }
-        void Left()  { SetIdx(IndexOf(get()) - 1); RefreshLast(); }
+        void Left() { SetIdx(IndexOf(get()) - 1); RefreshLast(); }
         void Right() { SetIdx(IndexOf(get()) + 1); RefreshLast(); }
         string Value() => $"{Mathf.RoundToInt(Mathf.Clamp01(get()) * 100f)}%";
 
         MakeRow(label, Value, Left, Right);
     }
+    
+    
 
     Color AccentForIndex(int i)
     {
@@ -402,7 +425,7 @@ public class Options : MonoBehaviour
         }
 
         int OtherMap() => playerIndex == 1 ? _mapP2 : _mapP1;
-        int ThisMap()  => playerIndex == 1 ? _mapP1 : _mapP2;
+        int ThisMap() => playerIndex == 1 ? _mapP1 : _mapP2;
 
         int NextFreeFrom(int current, int dir, int other)
         {
@@ -449,4 +472,6 @@ public class Options : MonoBehaviour
 
         MakeRow(label, Value, Left, Right);
     }
+    
+    
 }
