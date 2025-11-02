@@ -1,0 +1,21 @@
+{
+  "app_id": 4135890,
+  "title": "Gamevault 1981",
+  "contexts": [],
+  "action_sets": [
+    { "name": "ui", "title": "UI" },
+    { "name": "gameplay", "title": "Gameplay" }
+  ],
+  "actions": [
+    { "name": "submit", "type": "digital", "title": "Submit/Confirm" },
+    { "name": "cancel", "type": "digital", "title": "Cancel/Back" },
+    { "name": "pause",  "type": "digital", "title": "Pause/Menu" },
+    { "name": "fire",   "type": "digital", "title": "Primary/Fire" },
+    { "name": "alt",    "type": "digital", "title": "Alt/Use" },
+    { "name": "next",   "type": "digital", "title": "Next" },
+    { "name": "prev",   "type": "digital", "title": "Prev" },
+    { "name": "move",   "type": "analog",  "mode": "joystick_move", "title": "Move/UI Navigate" },
+    { "name": "aim",    "type": "analog",  "mode": "joystick_move", "title": "Aim (optional)" }
+  ],
+  "localization": []
+}
