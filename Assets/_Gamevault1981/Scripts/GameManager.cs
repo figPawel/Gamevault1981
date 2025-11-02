@@ -33,19 +33,39 @@ public abstract class GameManager : MonoBehaviour
         _gameOver = false;
         _pauseCooldown = 0f;
         _quitConfirmArmed = false;
+
+        // ---- Achievements: mark first run, played game, and 2P played (idempotent) ----
+        if (PlayerDataManager.I != null)
+        {
+            PlayerDataManager.I.MarkFirstRun();
+
+            if (Def != null)
+            {
+                int total = (meta != null && meta.Games != null) ? meta.Games.Count : 0;
+                PlayerDataManager.I.ReportPlayedGame(Def.id, total);
+            }
+
+            if (mode != GameMode.Solo)
+                PlayerDataManager.I.ReportPlayedTwoPlayer();
+        }
+        // -----------------------------------------------------------------------------
+
         OnStartMode();
     }
 
     public virtual void QuitToMenu()
     {
+        // Record meta progress first
         if (meta)
             meta.ReportRun(Def, Mode, ScoreP1, ScoreP2);
+
+        // Hand off leaderboard upload to PlayerDataManager (GameManager is transient)
+        TryUploadRunToLeaderboards();
 
         Running = false;
         Paused = false;
         _gameOver = false;
 
-        // Return to selection & re-enable UI
         meta?.QuitToSelection();
     }
 
@@ -58,12 +78,15 @@ public abstract class GameManager : MonoBehaviour
 
         if (meta && Def != null)
             meta.ReportRun(Def, Mode, ScoreP1, ScoreP2);
+
+        // Also upload on game-over (covers runs that don’t navigate the pause path)
+        TryUploadRunToLeaderboards();
     }
 
     // --------------- Input wrappers (via InputManager) ---------------
     protected Vector2 Move(int p = 1) => InputManager.I ? InputManager.I.Move(p) : Vector2.zero;
-    protected bool BtnA(int p = 1)    => InputManager.I && InputManager.I.Fire(p);
-    protected bool BtnADown(int p=1)  => InputManager.I && InputManager.I.FireDown(p);
+    protected bool BtnA(int p = 1) => InputManager.I && InputManager.I.Fire(p);
+    protected bool BtnADown(int p = 1) => InputManager.I && InputManager.I.FireDown(p);
 
     protected bool PausePressed()
     {
@@ -183,7 +206,6 @@ public abstract class GameManager : MonoBehaviour
             if (_quitConfirmArmed)
             {
                 float t = Mathf.Clamp01(_quitConfirmTimer / QuitConfirmWindow);
-                // Blink alpha while counting down
                 float a = 0.6f + 0.4f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 12f));
                 var col = new Color(1f, 0.6f, 0.6f, a);
 
@@ -191,17 +213,39 @@ public abstract class GameManager : MonoBehaviour
                 int w = msg.Length * SMALL_W;
                 RetroDraw.PrintSmall(cx - w / 2, cy - 24, msg, sw, sh, col);
 
-                // Optional tiny countdown indicator under it
                 string secs = $"{_quitConfirmTimer:0.0}s";
                 int w2 = secs.Length * SMALL_W;
                 RetroDraw.PrintSmall(cx - w2 / 2, cy - 32, secs, sw, sh, new Color(1f, 0.75f, 0.75f, a));
             }
             else
             {
-                // Normal hint when not in confirm mode
                 int hintW = HINT.Length * SMALL_W;
                 RetroDraw.PrintSmall(cx - hintW / 2, cy - 16, HINT, sw, sh, new Color(0.85f, 0.9f, 1f, 1));
             }
         }
+    }
+
+    // --- The single, authoritative uploader used by QuitToMenu() and GameOverNow() ---
+    void TryUploadRunToLeaderboards()
+    {
+        if (Def == null || PlayerDataManager.I == null) return;
+
+        if (Mode == GameMode.Solo)
+        {
+            PlayerDataManager.I.ReportScore(Def.id, ScoreP1, twoPlayer: false, details: null);
+            return;
+        }
+
+        // Compose a sensible 2P score and pass raw details for UI/debug
+        int composite = Mode switch
+        {
+            GameMode.Versus2P => Mathf.Max(ScoreP1, ScoreP2), // winner's score
+            GameMode.Coop2P   => ScoreP1 + ScoreP2,           // team sum
+            GameMode.Alt2P    => ScoreP1 + ScoreP2,           // alternating = sum
+            _                 => ScoreP1
+        };
+
+        var details = new int[] { ScoreP1, ScoreP2, (int)Mode };
+        PlayerDataManager.I.ReportScore(Def.id, composite, twoPlayer: true, details: details);
     }
 }

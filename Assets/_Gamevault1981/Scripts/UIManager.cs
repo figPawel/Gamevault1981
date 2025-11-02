@@ -63,18 +63,26 @@ public class UIManager : MonoBehaviour
     public float mainScoreTickHz = 660f;
     public float mainScoreFinishHz = 880f;
 
+    public GameObject leaderboardBandPrefab; // <-- assign your LeaderboardBand prefab in the Inspector
+
+
     MetaGameManager _meta;
     readonly List<GameObject> _bands = new List<GameObject>();
 
     float _musicVol = 0.8f;
     float _sfxVol   = 1.0f;
 
+readonly List<GameDef> _bandDefs = new List<GameDef>();
 
 
     RectTransform _spacerTop, _spacerBottom;
     bool _builtList = false;
 
     GameObject _lastSel;
+
+    // --- Leaderboards toggle (header button) ---
+TMP_Text _lbBtnLabel;
+bool _lbSubscribedToPDM = false;
 
     bool  _mainCounting;
     int   _mainFrom, _mainTo;
@@ -202,18 +210,36 @@ public class UIManager : MonoBehaviour
         if (cur == null) _lastSel = null;
     }
 
-    public void Init(MetaGameManager meta)
+ public void Init(MetaGameManager meta)
+{
+    _meta = meta;
+
+    if (btnGameSelection)    btnGameSelection.onClick.AddListener(_meta.OpenSelection);
+    if (btnQuit)             btnQuit.onClick.AddListener(_meta.QuitApp);
+    if (btnBackFromSelect)   btnBackFromSelect.onClick.AddListener(_meta.OpenTitle);
+
+    // --- Leaderboards header button wiring ---
+    if (btnTopLeaderboards)
     {
-        _meta = meta;
-
-        if (btnGameSelection)    btnGameSelection.onClick.AddListener(_meta.OpenSelection);
-        if (btnQuit)             btnQuit.onClick.AddListener(_meta.QuitApp);
-        if (btnBackFromSelect)   btnBackFromSelect.onClick.AddListener(_meta.OpenTitle);
-
-        ShowTitle(false);
-        ShowSelect(false);
-        ShowInGameMenu(false);
+        _lbBtnLabel = btnTopLeaderboards.GetComponentInChildren<TMP_Text>(true);
+        btnTopLeaderboards.onClick.RemoveListener(OnLeaderboardsButtonClicked);
+        btnTopLeaderboards.onClick.AddListener(OnLeaderboardsButtonClicked);
     }
+
+    // Subscribe to global toggle so UI stays in sync even if some other code flips it
+    if (PlayerDataManager.I != null && !_lbSubscribedToPDM)
+    {
+        PlayerDataManager.I.OnLeaderboardToggleChanged += OnLeaderboardsToggled;
+        _lbSubscribedToPDM = true;
+    }
+
+    // Initial state: leaderboards are ON by default; reflect that in label and rows
+    RefreshLeaderboardsHeaderAndRows();
+
+    ShowTitle(false);
+    ShowSelect(false);
+    ShowInGameMenu(false);
+}
 
     // ---------- Visibility ----------
     public void ShowTitle(bool on)
@@ -240,32 +266,36 @@ public class UIManager : MonoBehaviour
         
     }
 
-    public void ShowSelect(bool on)
+ public void ShowSelect(bool on)
+{
+    if (!selectRoot) return;
+    if (on) ClearSelection();
+    selectRoot.alpha = on ? 1 : 0;
+    selectRoot.interactable = on;
+    selectRoot.blocksRaycasts = on;
+
+    if (on)
     {
-        if (!selectRoot) return;
-        if (on) ClearSelection();
-        selectRoot.alpha = on ? 1 : 0;
-        selectRoot.interactable = on;
-        selectRoot.blocksRaycasts = on;
+        GameObject header =
+            (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
+            (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
+            (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
 
-        if (on)
-        {
-            GameObject header =
-                (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
-                (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
-                (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
+        if (header) EventSystem.current?.SetSelectedGameObject(header);
+        if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
 
-            if (header) EventSystem.current?.SetSelectedGameObject(header);
-            if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+        if (!_mainCounting && mainScoreText && _meta != null)
+            mainScoreText.text = _meta.MainScore.ToString("N0");
 
-            if (!_mainCounting && mainScoreText && _meta != null)
-                mainScoreText.text = _meta.MainScore.ToString("N0");
-        }
-        else
-        {
-            HideNewUnlocksBanner();
-        }
+        RefreshLeaderboardsHeaderAndRows(); // <- make sure header text & rows match state
     }
+    else
+    {
+        HideNewUnlocksBanner();
+    }
+}
+
+
 
     public void ShowInGameMenu(bool on)
     {
@@ -287,41 +317,49 @@ public class UIManager : MonoBehaviour
 
     // ---------- Selection list ----------
     public void BindSelection(List<GameDef> games)
+{
+    if (_builtList) return;
+
+    _bandDefs.Clear();
+    _bands.Clear();
+
+    foreach (var g in games)
     {
-        if (_builtList) return;
+        bool unlocked = _meta == null || _meta.IsUnlocked(g);
+        if (!unlocked && _meta != null && !_meta.ShowLockedBands)
+            continue;
 
-        foreach (var g in games)
+        var go = Object.Instantiate(bandPrefab, listRoot);
+        var band = go.GetComponent<UISelectBand>();
+        if (band != null)
         {
-            bool unlocked = _meta == null || _meta.IsUnlocked(g);
-            if (!unlocked && _meta != null && !_meta.ShowLockedBands)
-                continue;
-
-            var go = Object.Instantiate(bandPrefab, listRoot);
-            var band = go.GetComponent<UISelectBand>();
-            if (band != null)
-            {
-                band.Bind(g, _meta);
-                band.onSelected = (rect) => { ScrollToBand(rect); _meta?.PreviewGameTrack(g); };
-            }
-            _bands.Add(go);
+            band.Bind(g, _meta);
+            band.onSelected = (rect) => { ScrollToBand(rect); _meta?.PreviewGameTrack(g); };
         }
-
-        EnsureEdgeSpacers();
-        WireVerticalNavigationForBands();
-
-        _builtList = true;
-
-        if (_bands.Count > 0)
-        {
-            GameObject header =
-                (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
-                (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
-                (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
-
-            if (header) EventSystem.current?.SetSelectedGameObject(header);
-            if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
-        }
+        _bands.Add(go);
+        _bandDefs.Add(g);
     }
+
+    // Insert Leaderboard bands (after each game band) if leaderboards are currently enabled
+    EnsureLeaderboardBands(ensureOn: PlayerDataManager.I == null ? true : PlayerDataManager.I.leaderboardsEnabled);
+
+    EnsureEdgeSpacers();
+    WireVerticalNavigationForBands();
+
+    _builtList = true;
+
+    if (_bands.Count > 0)
+    {
+        GameObject header =
+            (btnTopOptions      ? btnTopOptions.gameObject      : null) ??
+            (btnTopLeaderboards ? btnTopLeaderboards.gameObject : null) ??
+            (btnBackFromSelect  ? btnBackFromSelect.gameObject  : null);
+
+        if (header) EventSystem.current?.SetSelectedGameObject(header);
+        if (selectScroll) selectScroll.verticalNormalizedPosition = 1f;
+    }
+}
+
 
     public void ScrollToBand(RectTransform item)
     {
@@ -476,33 +514,52 @@ public class UIManager : MonoBehaviour
     }
 
     void WireVerticalNavigationForBands()
+{
+    // Build the linear navigation list by scanning listRoot in hierarchy order.
+    // Include BOTH regular game bands (UISelectBand) and leaderboard bands (LeaderboardBand).
+    var orderedButtons = new List<Button>();
+    for (int i = 0; i < listRoot.childCount; i++)
     {
-        var bandButtons = new List<Button>();
-        foreach (var go in _bands)
+        var t = listRoot.GetChild(i);
+        if (!t || !t.gameObject.activeInHierarchy) continue;
+
+        Button b = null;
+
+        var gameBand = t.GetComponent<UISelectBand>();
+        if (gameBand && gameBand.bandButton) b = gameBand.bandButton;
+
+        if (b == null)
         {
-            if (!go) continue;
-            var band = go.GetComponent<UISelectBand>();
-            if (band && band.bandButton) bandButtons.Add(band.bandButton);
+            var lb = t.GetComponent<LeaderboardBand>();
+            if (lb) b = t.GetComponent<Button>(); // LeaderboardBand's toggle lives on root
         }
 
-        Button topMid = btnBackFromSelect ?? btnTopLeaderboards ?? btnTopOptions;
-
-        for (int i = 0; i < bandButtons.Count; i++)
-        {
-            var b = bandButtons[i];
-            var nav = new Navigation { mode = Navigation.Mode.Explicit };
-            nav.selectOnUp = (i > 0) ? bandButtons[i - 1] : topMid;
-            nav.selectOnDown = (i < bandButtons.Count - 1) ? bandButtons[i + 1] : null;
-
-            var prev = b.navigation;
-            nav.selectOnLeft = prev.selectOnLeft;
-            nav.selectOnRight = prev.selectOnRight;
-
-            b.navigation = nav;
-        }
-
-        WireTopHeaderNavigation(bandButtons.Count > 0 ? bandButtons[0] : null);
+        if (b && b.isActiveAndEnabled && b.interactable)
+            orderedButtons.Add(b);
     }
+
+    // Top header target if the player presses Up on the very first row.
+    Button topMid = btnBackFromSelect ?? btnTopLeaderboards ?? btnTopOptions;
+
+    for (int i = 0; i < orderedButtons.Count; i++)
+    {
+        var b = orderedButtons[i];
+        var nav = new Navigation { mode = Navigation.Mode.Explicit };
+        nav.selectOnUp   = (i > 0) ? orderedButtons[i - 1] : topMid;
+        nav.selectOnDown = (i < orderedButtons.Count - 1) ? orderedButtons[i + 1] : null;
+
+        // preserve existing left/right on the button (some bands may use them)
+        var prev = b.navigation;
+        nav.selectOnLeft  = prev.selectOnLeft;
+        nav.selectOnRight = prev.selectOnRight;
+
+        b.navigation = nav;
+    }
+
+    // Header wiring (so Up/Down from the header lands on the first row)
+    WireTopHeaderNavigation(orderedButtons.Count > 0 ? orderedButtons[0] : null);
+}
+
 
     void WireTopHeaderNavigation(Button firstBand)
     {
@@ -623,16 +680,27 @@ public class UIManager : MonoBehaviour
         return null;
     }
 
-    Button FirstBandButton()
+Button FirstBandButton()
+{
+    // First selectable among game bands OR leaderboard bands, in on-screen order.
+    for (int i = 0; i < listRoot.childCount; i++)
     {
-        foreach (var go in _bands)
+        var t = listRoot.GetChild(i);
+        if (!t) continue;
+
+        var sel = t.GetComponent<UISelectBand>();
+        if (sel && sel.bandButton && sel.bandButton.isActiveAndEnabled && sel.bandButton.interactable)
+            return sel.bandButton;
+
+        var lb = t.GetComponent<LeaderboardBand>();
+        if (lb)
         {
-            if (!go) continue;
-            var b = go.GetComponent<UISelectBand>()?.bandButton;
-            if (b && b.isActiveAndEnabled && b.interactable) return b;
+            var btn = t.GetComponent<Button>();
+            if (btn && btn.isActiveAndEnabled && btn.interactable) return btn;
         }
-        return null;
     }
+    return null;
+}
 
     void StickyFocusGuard()
     {
@@ -679,12 +747,45 @@ public class UIManager : MonoBehaviour
     {
         if (!mainScoreText) return;
         _mainFrom = Mathf.Max(0, from);
-        _mainTo   = Mathf.Max(_mainFrom, to);
+        _mainTo = Mathf.Max(_mainFrom, to);
         _mainCurrent = _mainFrom;
         _mainShown = -1;
         _mainCounting = (_mainTo > _mainFrom);
         mainScoreText.text = _mainFrom.ToString("N0");
     }
+    
+    void OnLeaderboardsButtonClicked()
+{
+    if (PlayerDataManager.I == null) return;
+    PlayerDataManager.I.ToggleLeaderboards();
+    // OnLeaderboardToggleChanged event from PlayerDataManager will call our refresh,
+    // but refresh immediately so the label flips even if no one’s listening.
+    RefreshLeaderboardsHeaderAndRows();
+}
+
+void OnLeaderboardsToggled(bool on)
+{
+    RefreshLeaderboardsHeaderAndRows();
+}
+
+void RefreshLeaderboardsHeaderAndRows()
+{
+    bool on = PlayerDataManager.I == null ? true : PlayerDataManager.I.leaderboardsEnabled;
+
+    if (_lbBtnLabel)
+        _lbBtnLabel.text = $"Leaderboards: {(on ? "On" : "Off")}";
+
+    EnsureLeaderboardBands(ensureOn: on);
+
+    var bands = GetComponentsInChildren<LeaderboardBand>(true);
+    for (int i = 0; i < bands.Length; i++)
+        if (bands[i]) bands[i].gameObject.SetActive(on);
+
+    WireVerticalNavigationForBands(); // rebuild nav after show/hide
+}
+
+
+
 
     public void RefreshBandStats()
     {
@@ -721,4 +822,84 @@ public class UIManager : MonoBehaviour
         }
         t.UpdateVertexData(TMP_VertexDataUpdateFlags.Colors32);
     }
+
+   void EnsureLeaderboardBands(bool ensureOn)
+{
+    if (!leaderboardBandPrefab) return;
+
+    for (int i = 0; i < _bands.Count; i++)
+    {
+        var gameGO = _bands[i];
+        if (!gameGO) continue;
+
+        int myIndex = gameGO.transform.GetSiblingIndex();
+        LeaderboardBand nextLB = null;
+        if (myIndex + 1 < listRoot.childCount)
+            nextLB = listRoot.GetChild(myIndex + 1).GetComponent<LeaderboardBand>();
+
+        if (!nextLB && ensureOn)
+        {
+            var def = (i < _bandDefs.Count) ? _bandDefs[i] : null;
+            var lbGO = Instantiate(leaderboardBandPrefab, listRoot);
+            lbGO.transform.SetSiblingIndex(myIndex + 1);
+            lbGO.SetActive(true);
+
+            nextLB = lbGO.GetComponent<LeaderboardBand>();
+            if (def != null && nextLB)
+            {
+                // Pretty + id
+                nextLB.prettyTitleOverride = def.title;
+                nextLB.gameId = def.id;
+
+                // 2P capability info
+                bool has2P = (def.flags & (GameFlags.Versus2P | GameFlags.Coop2P | GameFlags.Alt2P)) != 0;
+                nextLB.hasTwoPlayer = has2P;
+                nextLB.useTwoPlayerBoard = false;
+
+                // Match color (exact)
+                var gameImg = gameGO.GetComponent<Image>();
+                var lbImg   = nextLB.GetComponent<Image>();
+                if (gameImg && lbImg) lbImg.color = gameImg.color;
+
+                // Give the band the same accent feel as a game band (tint/highlight)
+                var accent = UISelectBand.AccentFor(def);
+                nextLB.SetAccent(accent);
+
+                // Ensure the band is selectable
+                var btn = lbGO.GetComponent<Button>();
+                if (btn)
+                {
+                    var nav = btn.navigation; nav.mode = Navigation.Mode.Explicit;
+                    nav.selectOnLeft = null; nav.selectOnRight = null;
+                    btn.navigation = nav;
+                    btn.interactable = true; btn.enabled = true;
+                }
+            }
+        }
+        // When ensureOn == false we keep instances; visibility is handled elsewhere.
+    }
+
+    WireVerticalNavigationForBands(); // Make sure they're in the focus chain
+}
+
+
+
+
+void SetLeaderboardBandAccent(LeaderboardBand lb, Color accent)
+{
+    var img = lb ? lb.GetComponent<Image>() : null;
+    if (img)
+    {
+        var c = accent; c.a = 0.20f;
+        img.color = c;
+    }
+}
+
+
+    void OnDestroy()
+{
+    if (_lbSubscribedToPDM && PlayerDataManager.I != null)
+        PlayerDataManager.I.OnLeaderboardToggleChanged -= OnLeaderboardsToggled;
+    _lbSubscribedToPDM = false;
+}
 }

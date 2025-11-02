@@ -457,23 +457,32 @@ public class MetaGameManager : MonoBehaviour
         }
     }
 
-    IEnumerator ShowNewUnlocksBannerAfterPayout(int fromScore, int toScore, float delayBeforeStart)
-    {
-        float countSpeed = (ui && ui.mainScoreCountSpeed > 0f) ? ui.mainScoreCountSpeed : 600f;
-        float payoutSeconds = Mathf.Clamp((toScore - fromScore) / Mathf.Max(1f, countSpeed), 0f, 6f);
-        yield return new WaitForSecondsRealtime(delayBeforeStart + payoutSeconds + 0.15f);
+   IEnumerator ShowNewUnlocksBannerAfterPayout(int fromScore, int toScore, float delayBeforeStart)
+{
+    float countSpeed = (ui && ui.mainScoreCountSpeed > 0f) ? ui.mainScoreCountSpeed : 600f;
+    float payoutSeconds = Mathf.Clamp((toScore - fromScore) / Mathf.Max(1f, countSpeed), 0f, 6f);
+    yield return new WaitForSecondsRealtime(delayBeforeStart + payoutSeconds + 0.15f);
 
-        int extraNow = ExtraUnlockedCountNow();
-        int prevSeen = PlayerPrefs.GetInt(PREF_UNLOCK_SEEN_COUNT, 0);
-        prevSeen = Mathf.Clamp(prevSeen, 0, Mathf.Max(0, extraNow));
-        int newly = Mathf.Max(0, extraNow - prevSeen);
-        if (newly > 0)
-        {
-            ui?.ShowNewUnlocksBanner(newly);
-            PlayerPrefs.SetInt(PREF_UNLOCK_SEEN_COUNT, extraNow);
-            PlayerPrefs.Save();
-        }
+    int extraNow = ExtraUnlockedCountNow();
+
+    // >>> REPORT UNLOCKED COUNT TO ACHIEVEMENTS <<<
+    if (PlayerDataManager.I != null)
+    {
+        int unlockedCount = Mathf.Min(AlwaysUnlockedFirstN + Mathf.Max(0, extraNow), Games.Count);
+        PlayerDataManager.I.ReportUnlockedGames(unlockedCount, Games.Count);
     }
+    // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    int prevSeen = PlayerPrefs.GetInt(PREF_UNLOCK_SEEN_COUNT, 0);
+    prevSeen = Mathf.Clamp(prevSeen, 0, Mathf.Max(0, extraNow));
+    int newly = Mathf.Max(0, extraNow - prevSeen);
+    if (newly > 0)
+    {
+        ui?.ShowNewUnlocksBanner(newly);
+        PlayerPrefs.SetInt(PREF_UNLOCK_SEEN_COUNT, extraNow);
+        PlayerPrefs.Save();
+    }
+}
 
     public void StartGame(GameDef def, GameMode? autoMode = null)
     {

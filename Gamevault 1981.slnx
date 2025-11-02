@@ -1,5 +1,6 @@
 ﻿<Solution>
   <Project Path="VFolders.csproj" />
+  <Project Path="Heathen.Steamworks.csproj" />
   <Project Path="Unity.PlayerPrefsEditor.Editor.csproj" />
   <Project Path="VHierarchy.csproj" />
   <Project Path="VTabs.csproj" />
@@ -7,6 +8,7 @@
   <Project Path="VInspector.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
   <Project Path="VFavorites.csproj" />
+  <Project Path="Heathen.Steamworks.Editor.csproj" />
   <Project Path="Unity.PlayerPrefsEditor.EditorResources.csproj" />
   <Project Path="Unity.PlayerPrefsEditor.Samples.SampleScene.csproj" />
 </Solution>
