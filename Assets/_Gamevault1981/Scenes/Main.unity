@@ -2497,7 +2497,7 @@ MonoBehaviour:
   _levelSmooth: 0.00009999998
   _bass: 0.000022897335
   _mid: 6.5932715e-10
-  _pulse: 1
+  _pulse: 0
   _heardAudioLastFrame: 1
   rowSubdivX: 32
 --- !u!4 &983812305

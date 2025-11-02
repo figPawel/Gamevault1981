@@ -70,7 +70,12 @@ public class UIManager : MonoBehaviour
     readonly List<GameObject> _bands = new List<GameObject>();
 
     float _musicVol = 0.8f;
-    float _sfxVol   = 1.0f;
+    float _sfxVol = 1.0f;
+    
+    GameObject _lastSel;
+bool _headerPinnedThisFocus = false;
+float _suppressPinUntil = 0f;
+float _suppressFollowUntil = 0f;
 
 readonly List<GameDef> _bandDefs = new List<GameDef>();
 
@@ -78,7 +83,7 @@ readonly List<GameDef> _bandDefs = new List<GameDef>();
     RectTransform _spacerTop, _spacerBottom;
     bool _builtList = false;
 
-    GameObject _lastSel;
+
 
     // --- Leaderboards toggle (header button) ---
 TMP_Text _lbBtnLabel;
@@ -138,20 +143,6 @@ void Update()
         }
     }
 
-    // -------- New-unlocks banner pulse + rainbow --------
-    if (_bannerGO && _bannerGO.activeInHierarchy)
-    {
-        _bannerPulseT += Time.unscaledDeltaTime * 2.6f;
-        float s = 1f + 0.04f * Mathf.Sin(_bannerPulseT * 1.9f);
-        float a = 0.85f + 0.15f * Mathf.Sin(_bannerPulseT);
-        _bannerGO.transform.localScale = new Vector3(s, s, 1f);
-        if (_bannerTxt)
-        {
-            var c = _bannerTxt.color; c.a = a; _bannerTxt.color = c;
-            AnimateRainbowTMP(_bannerTxt, bannerRainbowSpeed, bannerRainbowSpread);
-        }
-    }
-
     // -------- Mouse state (wheel + buttons + pointer position) --------
     float wheel = 0f;
     Vector2 mousePos = Vector2.negativeInfinity;
@@ -175,14 +166,29 @@ void Update()
         !float.IsNegativeInfinity(mousePos.x) &&
         RectTransformUtility.RectangleContainsScreenPoint(selectViewport, mousePos, null);
 
-    // "Mouse is in charge" if pointer is over the viewport and any button is down or the wheel moved.
-    // We also treat inertial motion as user interaction so we don't fight the ScrollRect.
-    bool inertiaActive = selectScroll && selectScroll.velocity.sqrMagnitude > 0.00001f;
-    bool mouseInteractingWithList = (SelectionActive() && selectScroll) &&
-                                    ((pointerOverViewport && (mouseAnyDown || Mathf.Abs(wheel) > 0.01f)) || inertiaActive);
+    bool hasScrollRect = SelectionActive() && selectScroll;
+    bool inertiaActive = hasScrollRect && selectScroll.velocity.sqrMagnitude > 0.00001f;
 
-    // -------- Let ScrollRect do its native wheel/drag thing --------
-    // No manual scrolling here; we only avoid interfering elsewhere.
+    // -------- Global wheel scroll while Selection is active --------
+    // This makes the wheel work even when the pointer/selection is on header buttons.
+    if (hasScrollRect && Mathf.Abs(wheel) > 0.01f)
+    {
+        float sens = 0.0016f; // tuned for Input System; fine on legacy too
+        float v = Mathf.Clamp01(selectScroll.verticalNormalizedPosition + wheel * sens);
+        selectScroll.verticalNormalizedPosition = v;
+    }
+
+    // Mouse is "controlling the list" if pointer is inside the viewport and a button is down,
+    // or if the wheel just moved, or if inertia is still coasting.
+    bool mouseInteractingWithList =
+        hasScrollRect && ((pointerOverViewport && (mouseAnyDown || Mathf.Abs(wheel) > 0.01f)) || inertiaActive);
+
+    // If the mouse just interacted, suppress our pin/follow for a short time window.
+    if (mouseInteractingWithList)
+    {
+        _suppressPinUntil    = Time.unscaledTime + 0.15f;
+        _suppressFollowUntil = Time.unscaledTime + 0.10f;
+    }
 
     // -------- Unified input via InputManager --------
     bool backDown  = InputManager.I && InputManager.I.UIBackDown();
@@ -199,24 +205,47 @@ void Update()
         }
     }
 
-    // General sticky-focus guard
-    StickyFocusGuard();
+    // General sticky-focus guard (but don't fight user while they're interacting with the list)
+    if (!(SelectionActive() && mouseInteractingWithList))
+        StickyFocusGuard();
 
-    // -------- Pin to top when header focused (but NOT while mouse is interacting with list) --------
-    if (SelectionActive() && selectScroll)
+    // -------- Current selection & change detection --------
+    var es = EventSystem.current;
+    var cur = es ? es.currentSelectedGameObject : null;
+    bool selectionChanged = (cur != null && cur != _lastSel);
+
+    if (selectionChanged)
     {
-        var es = EventSystem.current;
-        var sel = es ? es.currentSelectedGameObject : null;
-        bool headerFocused =
-           (btnTopLeaderboards && sel == btnTopLeaderboards.gameObject) ||
-           (btnTopOptions      && sel == btnTopOptions.gameObject)      ||
-           (btnBackFromSelect  && sel == btnBackFromSelect.gameObject);
+        _lastSel = cur;
+        _headerPinnedThisFocus = false; // reset one-shot pin when focus moves
+        if (_meta && _meta.audioBus) _meta.audioBus.BeepOnce(520f, 0.02f, 0.08f);
+    }
+    if (cur == null) _lastSel = null;
 
-        if (headerFocused && !mouseInteractingWithList)
-            selectScroll.verticalNormalizedPosition = 1f;
+    // -------- Determine if a header is focused --------
+    bool headerFocused =
+       (btnTopLeaderboards && cur == btnTopLeaderboards.gameObject) ||
+       (btnTopOptions      && cur == btnTopOptions.gameObject)      ||
+       (btnBackFromSelect  && cur == btnBackFromSelect.gameObject);
+
+    // -------- Pin to top ONCE when entering a header (no flicker), unless suppressed --------
+    if (SelectionActive() && selectScroll && headerFocused)
+    {
+        if (!_headerPinnedThisFocus &&
+            Time.unscaledTime >= _suppressPinUntil &&
+            !mouseInteractingWithList)
+        {
+            // Only do anything if we're not already basically at the top.
+            if (selectScroll.verticalNormalizedPosition < 0.985f)
+            {
+                selectScroll.velocity = Vector2.zero; // stop tug-of-war
+                selectScroll.verticalNormalizedPosition = 1f;
+            }
+            _headerPinnedThisFocus = true;
+        }
     }
 
-    // -------- Back only in Selection (title/gameplay/menu ignore Back) --------
+    // -------- Back only in Selection --------
     if (SelectionActive())
     {
         if (backDown) HandleBackSinglePress();
@@ -232,19 +261,9 @@ void Update()
         if (pauseDown) HandlePauseToggle();
     }
 
-    // -------- Focus change beep + detect selection changes --------
-    var es2 = EventSystem.current;
-    var cur = es2 ? es2.currentSelectedGameObject : null;
-    bool selectionChanged = (cur != null && cur != _lastSel);
-    if (selectionChanged)
-    {
-        _lastSel = cur;
-        if (_meta && _meta.audioBus) _meta.audioBus.BeepOnce(520f, 0.02f, 0.08f);
-    }
-    if (cur == null) _lastSel = null;
-
-    // -------- Follow-the-focus autoscroll ONLY on focus change & only when mouse isn't controlling --------
-    if (SelectionActive() && selectScroll && selectionChanged && !mouseInteractingWithList && cur != null)
+    // -------- Follow-the-focus autoscroll ONLY on focus change, not header, not while mouse/inertia --------
+    if (SelectionActive() && selectScroll && selectionChanged && !headerFocused &&
+        !mouseInteractingWithList && Time.unscaledTime >= _suppressFollowUntil && cur != null)
     {
         RectTransform row = null;
 
@@ -261,6 +280,7 @@ void Update()
             ScrollToBand(row);
     }
 }
+
 
 
 
